@@ -217,10 +217,10 @@ document.addEventListener('DOMContentLoaded', function() {
     updateBadgeStyle(volumeBadge, volumePercent);
     volumeBadge.textContent = volumePercent + '%';
     
-    // Add expand icon
+    // Add expand icon - FIXED: Use textContent instead of innerHTML
     const expandIcon = document.createElement('div');
     expandIcon.className = 'expand-icon';
-    expandIcon.innerHTML = '▼';
+    expandIcon.textContent = '▼';
     
     // Assemble header
     tabHeader.appendChild(tabIcon);
@@ -233,7 +233,7 @@ document.addEventListener('DOMContentLoaded', function() {
       const controls = tabHeader.nextElementSibling;
       controls.classList.toggle('active');
       tabHeader.classList.toggle('expanded');
-      expandIcon.innerHTML = controls.classList.contains('active') ? '▲' : '▼';
+      expandIcon.textContent = controls.classList.contains('active') ? '▲' : '▼';
     });
     
     return tabHeader;

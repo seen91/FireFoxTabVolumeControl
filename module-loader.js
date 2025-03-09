@@ -11,6 +11,11 @@ const MODULES = {
     name: 'YouTube',
     path: 'site-handlers/youtube-handler.js'
   },
+  reddit: {
+    pattern: /reddit\.com/,
+    name: 'Reddit',
+    path: 'site-handlers/reddit-handler.js'
+  },
   ninegag: {
     pattern: /9gag\.com/,
     name: '9GAG',

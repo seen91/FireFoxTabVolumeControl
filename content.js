@@ -40,6 +40,10 @@ function initialize() {
   if (hostname.includes('youtube.com')) {
     initYouTubeVolumeControl();
     return;
+  } else if (hostname.includes('9gag.com')) {
+    console.log('Volume Control: Using 9GAG-specific handler');
+    // When running in the extension, this will be imported from a separate file
+    return;
   }
 
   // Standard initialization for most sites

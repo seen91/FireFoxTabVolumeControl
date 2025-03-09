@@ -43,8 +43,6 @@
   },
   "author": "Sebastian Engvall",
   "homepage_url": "https://github.com/seen91/FireFoxTabVolumeControl",
-  "license": "MIT",
-  "copyright": "Copyright © 2025 Sebastian Engvall. This add-on is provided under the MIT License. Feel free to use, modify, and distribute the code as long as you include the original copyright notice. The full license is available at the repository.",
   "browser_specific_settings": {
     "gecko": {
       "id": "tab-volume-control@sebastianengvall.github.io",

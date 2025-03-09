@@ -1,52 +1,81 @@
-// module-loader.js - Loads the appropriate volume control modules
+/**
+ * Module Loader for Volume Control Add-on
+ * 
+ * Loads the appropriate site-specific modules based on the current website
+ */
 
-// Import the core and site-specific handlers
-// In a real extension, you would use proper imports
+// Constants
+const MODULES = {
+  youtube: {
+    pattern: /youtube\.com/,
+    name: 'YouTube',
+    path: 'site-handlers/youtube-handler.js'
+  },
+  ninegag: {
+    pattern: /9gag\.com/,
+    name: '9GAG',
+    path: 'site-handlers/9gag-handler.js'
+  },
+  standard: {
+    pattern: /.*/,
+    name: 'Standard',
+    path: 'site-handlers/standard-handler.js'
+  }
+};
 
-// Main module loader function
+/**
+ * Main entry point - load appropriate modules
+ */
 function loadVolumeControlModules() {
-  // Determine which handler to use based on the current website
   const hostname = window.location.hostname;
+  const moduleToLoad = findModuleForHostname(hostname);
   
-  // Load the appropriate module
-  if (hostname.includes('youtube.com')) {
-    console.log('Volume Control: Loading YouTube-specific module');
-    // In a real extension, this would import the YouTube module
-    loadYouTubeModule();
-  } else if (hostname.includes('9gag.com')) {
-    console.log('Volume Control: Loading 9GAG-specific module');
-    // In a real extension, this would import the 9GAG module
-    load9GAGModule();
-  } else {
-    console.log('Volume Control: Loading standard module');
-    // In a real extension, this would import the standard module
-    loadStandardModule();
+  console.log(`Volume Control: Loading ${moduleToLoad.name} module`);
+  loadModule(moduleToLoad.path);
+}
+
+/**
+ * Find the appropriate module for the current hostname
+ * @param {string} hostname - The current site's hostname
+ * @returns {object} The module configuration to load
+ */
+function findModuleForHostname(hostname) {
+  // Find a matching module or use standard as fallback
+  for (const [key, module] of Object.entries(MODULES)) {
+    if (module.pattern.test(hostname)) {
+      return module;
+    }
+  }
+  
+  // This should never happen because standard matches everything
+  return MODULES.standard;
+}
+
+/**
+ * Load a module by path
+ * @param {string} path - Path to the module
+ */
+function loadModule(path) {
+  try {
+    const script = document.createElement('script');
+    script.src = browser.runtime.getURL(path);
+    script.onload = () => {
+      console.log(`Volume Control: Successfully loaded ${path}`);
+    };
+    script.onerror = (error) => {
+      console.error(`Volume Control: Error loading ${path}`, error);
+      
+      // If a specific module fails, fall back to standard handler
+      if (path !== MODULES.standard.path) {
+        console.log('Volume Control: Falling back to standard module');
+        loadModule(MODULES.standard.path);
+      }
+    };
+    document.head.appendChild(script);
+  } catch (error) {
+    console.error('Volume Control: Error loading module', error);
   }
 }
 
-// Function to load the YouTube-specific module
-function loadYouTubeModule() {
-  // In a real extension, this would be implemented as an import or script injection
-  const script = document.createElement('script');
-  script.src = browser.runtime.getURL('youtube-handler.js');
-  document.head.appendChild(script);
-}
-
-// Function to load the 9GAG-specific module
-function load9GAGModule() {
-  // In a real extension, this would be implemented as an import or script injection
-  const script = document.createElement('script');
-  script.src = browser.runtime.getURL('9gag-handler.js');
-  document.head.appendChild(script);
-}
-
-// Function to load the standard module
-function loadStandardModule() {
-  // In a real extension, this would be implemented as an import or script injection
-  const script = document.createElement('script');
-  script.src = browser.runtime.getURL('standard-handler.js');
-  document.head.appendChild(script);
-}
-
-// Start the module loading process
+// Start the module loading process when the script runs
 loadVolumeControlModules();

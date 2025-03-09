@@ -1,258 +1,354 @@
-// youtube-handler.js - YouTube-specific volume control
+/**
+ * YouTube-specific volume control handler
+ * This file contains specialized code for handling YouTube's unique audio setup
+ */
 
-// YouTube-specific module variables
-let ytAudioContext;
-let ytGainNode;
-let ytCurrentVolume = 1.0;
-let ytAudioElements = new Set();
-let ytMediaSourceNodes = new Map();
-let ytInitialized = false;
+// Constants
+const CHECK_INTERVAL = 1000; // Check for videos every second
+const MAX_ATTEMPTS = 10;     // Maximum attempts to find video
 
-// Initialize YouTube-specific volume control
+// State for YouTube handling
+const ytState = {
+  audioContext: null,
+  gainNode: null,
+  currentVolume: 1.0,
+  audioElements: new Set(),
+  mediaSourceNodes: new Map(),
+  initialized: false,
+  attemptCount: 0,
+  checkInterval: null
+};
+
+/**
+ * Initialize YouTube-specific volume control
+ */
 function initYouTubeVolumeControl() {
-  if (ytInitialized) return;
-  ytInitialized = true;
+  console.log('YouTube volume control: initializing');
   
-  console.log('Volume control: YouTube-specific handler initialized');
+  if (ytState.initialized) return;
+  ytState.initialized = true;
   
-  // Initialize AudioContext immediately for YouTube
-  initYouTubeAudioContext();
+  // Set up message listener right away
+  setupYouTubeMessageListener();
   
-  // Start looking for YouTube video elements
+  // Initial search for video player
   findYouTubeVideo();
   
-  // Try multiple times to catch YouTube's dynamic loading
-  setTimeout(findYouTubeVideo, 1000);
-  setTimeout(findYouTubeVideo, 3000);
+  // Set up interval to keep checking for YouTube videos
+  ytState.checkInterval = setInterval(() => {
+    if (ytState.attemptCount >= MAX_ATTEMPTS && ytState.audioElements.size === 0) {
+      // Stop trying after max attempts if we haven't found anything
+      clearInterval(ytState.checkInterval);
+      console.log('YouTube volume control: giving up after max attempts');
+    } else {
+      findYouTubeVideo();
+      ytState.attemptCount++;
+    }
+  }, CHECK_INTERVAL);
   
-  // Listen for YouTube SPA navigation events
-  window.addEventListener('yt-navigate-finish', function() {
-    console.log('Volume control: YouTube navigation detected');
-    setTimeout(findYouTubeVideo, 1000);
-  });
+  // Monitor YouTube navigation events to detect page changes
+  setupYouTubeNavListener();
   
-  // Setup special YouTube mutation observer
-  const ytObserver = new MutationObserver((mutations) => {
-    findYouTubeVideo();
-  });
-  
-  // Observe the player container if it exists
-  const playerContainer = document.getElementById('player') || 
-                          document.getElementById('movie_player') || 
-                          document.querySelector('.html5-video-container');
-                          
-  if (playerContainer) {
-    ytObserver.observe(playerContainer, {
-      childList: true,
-      subtree: true
-    });
-  } else {
-    // If no player container found yet, observe body for it
-    ytObserver.observe(document.body, {
-      childList: true,
-      subtree: false
-    });
-  }
-  
-  // Hook into YouTube's MediaSource for stream detection
-  hookYouTubeMediaSource();
-  
-  // Set up message listener for extension commands
-  setupYouTubeMessageListener();
+  // Hook into YouTube's APIs if possible
+  hookYouTubeAPIs();
 }
 
-// Initialize audio context specifically for YouTube
+/**
+ * Find YouTube video player using multiple methods
+ */
+function findYouTubeVideo() {
+  // Try different selectors that might find the YouTube player
+  const selectors = [
+    'video.html5-main-video',           // Main player
+    '.html5-video-container video',     // Video container
+    '#movie_player video',              // Movie player
+    'ytd-player video',                 // New player
+    'video'                             // Any video
+  ];
+  
+  let foundVideo = false;
+  
+  for (const selector of selectors) {
+    const videos = document.querySelectorAll(selector);
+    if (videos.length > 0) {
+      videos.forEach(video => {
+        if (!ytState.audioElements.has(video)) {
+          console.log('YouTube volume control: found video element', video);
+          handleYouTubeVideo(video);
+          foundVideo = true;
+        }
+      });
+      
+      if (foundVideo) break;
+    }
+  }
+  
+  // If we found a video, make sure we have audio context
+  if (foundVideo && !ytState.audioContext) {
+    initYouTubeAudioContext();
+  }
+  
+  return foundVideo;
+}
+
+/**
+ * Handle YouTube video element
+ * @param {HTMLVideoElement} video - The video element to handle
+ */
+function handleYouTubeVideo(video) {
+  if (ytState.audioElements.has(video)) return;
+  
+  ytState.audioElements.add(video);
+  
+  // Store original volume
+  if (video._originalVolume === undefined) {
+    video._originalVolume = video.volume;
+  }
+  
+  // Apply current volume
+  applyYouTubeVolumeToElement(video, ytState.currentVolume);
+  
+  // If audio context exists, connect video to it
+  if (ytState.audioContext && ytState.gainNode) {
+    connectYouTubeElementToGainNode(video);
+  }
+  
+  // Add event listeners to detect playing
+  video.addEventListener('play', () => {
+    if (!ytState.audioContext) {
+      initYouTubeAudioContext();
+    }
+    // Notify background script that this page has audio
+    notifyYouTubeHasAudio();
+  });
+  
+  // Detect if the video is already playing
+  if (!video.paused && !video.ended && video.currentTime > 0) {
+    notifyYouTubeHasAudio();
+  }
+}
+
+/**
+ * Initialize Web Audio API for YouTube
+ */
 function initYouTubeAudioContext() {
-  if (ytAudioContext) return; // Already initialized
+  if (ytState.audioContext) return;
   
   try {
-    // Create new AudioContext
-    ytAudioContext = new (window.AudioContext || window.webkitAudioContext)();
+    ytState.audioContext = new (window.AudioContext || window.webkitAudioContext)();
+    ytState.gainNode = ytState.audioContext.createGain();
+    ytState.gainNode.gain.value = ytState.currentVolume;
+    ytState.gainNode.connect(ytState.audioContext.destination);
     
-    // Create a gain node for volume control
-    ytGainNode = ytAudioContext.createGain();
-    ytGainNode.gain.value = ytCurrentVolume;
-    ytGainNode.connect(ytAudioContext.destination);
-    
-    // Apply the current volume to existing media elements
-    ytAudioElements.forEach(element => {
+    // Connect existing elements
+    ytState.audioElements.forEach(element => {
       connectYouTubeElementToGainNode(element);
     });
     
-    console.log('Volume control: YouTube AudioContext initialized');
+    console.log('YouTube volume control: AudioContext initialized');
   } catch (e) {
-    console.error('Volume control: YouTube Web Audio API initialization failed', e);
+    console.error('YouTube volume control: AudioContext initialization failed', e);
   }
 }
 
-// Find YouTube video elements in the page
-function findYouTubeVideo() {
-  // Try to find the main video element first (most reliable)
-  const videoElement = document.querySelector('video.html5-main-video');
-  if (videoElement && !ytAudioElements.has(videoElement)) {
-    console.log('Volume control: Found YouTube main video');
-    handleYouTubeMediaElement(videoElement);
-    return true;
-  }
-  
-  // Look for any video elements (backup approach)
-  const videos = document.querySelectorAll('video');
-  if (videos.length > 0) {
-    let foundNew = false;
-    videos.forEach(video => {
-      if (!ytAudioElements.has(video)) {
-        console.log('Volume control: Found YouTube video');
-        handleYouTubeMediaElement(video);
-        foundNew = true;
-      }
-    });
-    if (foundNew) return true;
-  }
-  
-  return false;
-}
-
-// Handle YouTube media elements specifically
-function handleYouTubeMediaElement(element) {
-  if (ytAudioElements.has(element)) return; // Already handling this element
-  
-  ytAudioElements.add(element);
-  
-  // Store the original volume for reference
-  if (element._originalVolume === undefined) {
-    element._originalVolume = element.volume;
-  }
-  
-  // Apply current volume directly first
-  applyYouTubeVolumeToElement(element, ytCurrentVolume);
-  
-  // If audio context exists, connect this element
-  if (ytAudioContext && ytGainNode) {
-    connectYouTubeElementToGainNode(element);
-  }
-  
-  // Add event listeners for YouTube-specific events
-  element.addEventListener('volumechange', function(e) {
-    // This helps us detect when YouTube's own controls change the volume
-    // We'll store this as the new _originalVolume
-    if (!element._ignoreVolumeChange) {
-      element._originalVolume = element.volume;
-      console.log('Volume control: YouTube internal volume changed to', element.volume);
-    }
-  });
-}
-
-// Connect YouTube element to our gain node
+/**
+ * Connect a YouTube video element to gain node
+ * @param {HTMLVideoElement} element - The video element to connect
+ */
 function connectYouTubeElementToGainNode(element) {
-  // Don't reconnect if already connected
-  if (ytMediaSourceNodes.has(element)) return;
+  if (ytState.mediaSourceNodes.has(element)) return;
   
   try {
-    // Create a new MediaElementSourceNode
-    const source = ytAudioContext.createMediaElementSource(element);
-    ytMediaSourceNodes.set(element, source);
+    const source = ytState.audioContext.createMediaElementSource(element);
+    ytState.mediaSourceNodes.set(element, source);
+    source.connect(ytState.gainNode);
     
-    // Connect to our gain node
-    source.connect(ytGainNode);
+    // Don't change YouTube's own volume property
+    element._volumeControlled = true;
     
-    // Apply our volume setting to the gain node
-    ytGainNode.gain.value = ytCurrentVolume;
-    
-    // For YouTube, we generally don't modify the element.volume directly
-    // because it can conflict with YouTube's own controls
-    console.log('Volume control: YouTube element connected to gain node successfully');
+    console.log('YouTube volume control: Connected element to gain node');
   } catch (e) {
-    console.error('Volume control: Error connecting YouTube element to gain node:', e);
-    // If we failed to connect to gain node, use direct volume as fallback
-    applyYouTubeVolumeToElement(element, ytCurrentVolume);
+    console.error('YouTube volume control: Failed to connect element to gain node', e);
+    
+    // Fall back to direct volume control
+    applyYouTubeVolumeToElement(element, ytState.currentVolume);
   }
 }
 
-// Apply volume directly to YouTube element (used for reduction or as fallback)
+/**
+ * Apply volume directly to a YouTube element
+ * @param {HTMLVideoElement} element - The video element
+ * @param {number} volumeLevel - Volume level (0.0 to 5.0)
+ */
 function applyYouTubeVolumeToElement(element, volumeLevel) {
-  try {
-    // Only directly modify volume for reduction, not amplification
-    if (volumeLevel <= 1.0) {
-      // Prevent recursive events
-      element._ignoreVolumeChange = true;
+  // Only apply direct volume changes for volume reduction
+  if (volumeLevel <= 1.0) {
+    try {
+      element._volumeControlled = true;
       element.volume = volumeLevel;
       setTimeout(() => {
-        element._ignoreVolumeChange = false;
+        element._volumeControlled = false;
       }, 50);
+    } catch (e) {
+      console.error('YouTube volume control: Error setting element volume', e);
     }
-  } catch (e) {
-    console.error('Volume control: Error setting YouTube element volume:', e);
   }
 }
 
-// Set volume for YouTube specifically
+/**
+ * Set volume for YouTube
+ * @param {number} volumeLevel - Volume level (0.0 to 5.0)
+ */
 function setYouTubeVolume(volumeLevel) {
-  ytCurrentVolume = volumeLevel;
+  ytState.currentVolume = volumeLevel;
   
-  // Notify the background script
+  // Notify background script about volume change
   browser.runtime.sendMessage({
     action: "volumeChanged",
     volume: volumeLevel
   });
-
-  // Apply to gain node for amplification
-  if (ytGainNode) {
+  
+  // Apply with gain node for amplification
+  if (ytState.gainNode) {
     try {
-      ytGainNode.gain.value = volumeLevel;
+      ytState.gainNode.gain.value = volumeLevel;
     } catch (e) {
-      console.error('Volume control: Error updating YouTube gain node:', e);
+      console.error('YouTube volume control: Error updating gain node', e);
     }
   }
   
-  // For volume reduction, also apply directly to video elements
+  // For reduction, also apply directly
   if (volumeLevel <= 1.0) {
-    ytAudioElements.forEach(element => {
+    ytState.audioElements.forEach(element => {
       applyYouTubeVolumeToElement(element, volumeLevel);
     });
   }
   
-  // Try to use YouTube's own player API as a fallback method
-  tryUseYouTubePlayerAPI(volumeLevel);
+  // Try YouTube's API methods
+  setYouTubeAPIVolume(volumeLevel);
 }
 
-// Try to use YouTube's own player API
-function tryUseYouTubePlayerAPI(volumeLevel) {
+/**
+ * Attempt to use YouTube's own API to set volume
+ * @param {number} volumeLevel - Volume level (0.0 to 5.0)
+ */
+function setYouTubeAPIVolume(volumeLevel) {
   try {
-    // Find the player object using multiple approaches
-    const player = document.querySelector('.html5-video-player') || 
-                   document.getElementById('movie_player');
-                   
-    if (player && typeof player.getVolume === 'function' && typeof player.setVolume === 'function') {
-      // Convert our 0-1 scale to YouTube's 0-100 scale for volume <= 1.0
-      if (volumeLevel <= 1.0) {
-        const ytVolume = Math.round(volumeLevel * 100);
-        player.setVolume(ytVolume);
-        console.log('Volume control: Successfully used YouTube API to set volume to', ytVolume);
+    // Try youtube player API
+    const player = document.querySelector('#movie_player') || 
+                  document.querySelector('.html5-video-player');
+    
+    if (player && typeof player.setVolume === 'function') {
+      // YouTube volume is 0-100
+      const ytVolume = Math.min(100, Math.round(volumeLevel * 100));
+      player.setVolume(ytVolume);
+      console.log('YouTube volume control: Set volume using YouTube API', ytVolume);
+    }
+    
+    // Try YouTube's JavaScript API if available
+    if (window.yt && window.yt.player && 
+        window.yt.player.Application && 
+        window.yt.player.Application.create) {
+      
+      const ytApp = window.yt.player.Application.create();
+      if (ytApp && ytApp.setVolume) {
+        const ytVolume = Math.min(100, Math.round(volumeLevel * 100));
+        ytApp.setVolume(ytVolume);
       }
     }
   } catch (e) {
-    // Just ignore errors with this approach
+    // Ignore errors with YouTube API
   }
 }
 
-// Hook into YouTube's MediaSource for stream detection
-function hookYouTubeMediaSource() {
+/**
+ * Set up listener for YouTube navigation events
+ */
+function setupYouTubeNavListener() {
+  // YouTube uses custom events for navigation
+  window.addEventListener('yt-navigate-start', () => {
+    console.log('YouTube volume control: Navigation detected');
+    
+    // Reset our tracking
+    ytState.audioElements.clear();
+    ytState.mediaSourceNodes.clear();
+    
+    // Start checking again
+    ytState.attemptCount = 0;
+    
+    if (!ytState.checkInterval) {
+      ytState.checkInterval = setInterval(findYouTubeVideo, CHECK_INTERVAL);
+    }
+  });
+  
+  window.addEventListener('yt-navigate-finish', () => {
+    // Look for video after navigation completes
+    setTimeout(findYouTubeVideo, 500);
+  });
+}
+
+/**
+ * Hook into YouTube's APIs to detect when audio is available
+ */
+function hookYouTubeAPIs() {
+  // Hook into YouTube's MediaSource to detect audio streams
   if (typeof MediaSource !== 'undefined') {
     const originalAddSourceBuffer = MediaSource.prototype.addSourceBuffer;
     MediaSource.prototype.addSourceBuffer = function() {
-      const sourceBuffer = originalAddSourceBuffer.apply(this, arguments);
-      // Check for YouTube audio stream
+      const buffer = originalAddSourceBuffer.apply(this, arguments);
+      
+      // If this is an audio buffer
       if (arguments[0] && arguments[0].includes('audio')) {
-        console.log('Volume control: Detected YouTube audio stream');
-        setTimeout(initYouTubeAudioContext, 500);
-        setTimeout(findYouTubeVideo, 1000);
+        console.log('YouTube volume control: Detected audio stream');
+        
+        // Initialize audio handling
+        setTimeout(findYouTubeVideo, 500);
       }
-      return sourceBuffer;
+      
+      return buffer;
     };
   }
+  
+  // Monitor DOM for changes to find dynamically added videos
+  const observer = new MutationObserver((mutations) => {
+    for (const mutation of mutations) {
+      if (mutation.addedNodes && mutation.addedNodes.length) {
+        // Check if any video elements were added
+        let foundVideo = false;
+        
+        mutation.addedNodes.forEach(node => {
+          // If it's a video element
+          if (node.nodeName === 'VIDEO') {
+            handleYouTubeVideo(node);
+            foundVideo = true;
+          } 
+          // If it might contain video elements
+          else if (node.querySelectorAll) {
+            const videos = node.querySelectorAll('video');
+            if (videos.length > 0) {
+              videos.forEach(video => handleYouTubeVideo(video));
+              foundVideo = true;
+            }
+          }
+        });
+        
+        if (foundVideo && !ytState.audioContext) {
+          initYouTubeAudioContext();
+        }
+      }
+    }
+  });
+  
+  // Start observing changes to the DOM
+  observer.observe(document.body, {
+    childList: true,
+    subtree: true
+  });
 }
 
-// Setup message listener for YouTube-specific handling
+/**
+ * Set up message listener for extension communication
+ */
 function setupYouTubeMessageListener() {
   browser.runtime.onMessage.addListener((message, sender, sendResponse) => {
     if (message.action === "setVolume") {
@@ -260,8 +356,55 @@ function setupYouTubeMessageListener() {
       sendResponse({success: true});
       return true;
     } else if (message.action === "getVolume") {
-      sendResponse({volume: ytCurrentVolume});
+      sendResponse({volume: ytState.currentVolume});
+      return true;
+    } else if (message.action === "checkForAudio") {
+      // Check if any videos are playing
+      let hasActiveAudio = false;
+      ytState.audioElements.forEach(video => {
+        if (!video.paused && !video.ended && video.currentTime > 0) {
+          hasActiveAudio = true;
+        }
+      });
+      
+      sendResponse({
+        hasAudio: ytState.audioElements.size > 0,
+        hasMediaElements: ytState.audioElements.size > 0,
+        hasActiveAudio: hasActiveAudio
+      });
       return true;
     }
   });
 }
+
+/**
+ * Notify background script that this page has audio
+ */
+function notifyYouTubeHasAudio() {
+  browser.runtime.sendMessage({
+    action: "notifyAudio",
+    hasActiveAudio: true
+  }).catch(() => {
+    // Ignore errors
+  });
+}
+
+/**
+ * Clean up when page unloads
+ */
+function cleanup() {
+  if (ytState.checkInterval) {
+    clearInterval(ytState.checkInterval);
+  }
+  
+  if (ytState.audioContext) {
+    try {
+      ytState.audioContext.close();
+    } catch (e) {
+      // Ignore errors
+    }
+  }
+}
+
+// Set up cleanup
+window.addEventListener('unload', cleanup);

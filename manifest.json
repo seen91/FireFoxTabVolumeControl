@@ -1,7 +1,7 @@
 {
   "manifest_version": 2,
   "name": "Tab Volume Control",
-  "version": "1.0",
+  "version": "1.0.0",
   "description": "Adjust the volume of individual tabs from 0% to 500%",
   "permissions": [
     "activeTab",
@@ -25,10 +25,7 @@
     "matches": ["<all_urls>"],
     "js": [
       "module-loader.js",
-      "content.js",
-      "site-handlers/standard-handler.js",
-      "site-handlers/youtube-handler.js",
-      "site-handlers/9gag-handler.js"
+      "content.js"
     ],
     "run_at": "document_start"
   }],
@@ -39,5 +36,7 @@
     "16": "icons/icon16.svg",
     "48": "icons/icon48.svg",
     "128": "icons/icon128.svg"
-  }
+  },
+  "author": "Sebastian Engvall",
+  "homepage_url": "https://www.linkedin.com/in/sebastian-engvall-45181a131/"
 }

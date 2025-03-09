@@ -1,10 +1,6 @@
 // content.js - Runs in the context of web pages
 // This script creates an AudioContext and controls volume using a GainNode
 
-// Import site-specific handlers
-// In extension code, this would be done through imports or separate files
-// For this example, we'll assume these handlers are defined elsewhere
-
 // Wait for the document to be ready
 if (document.readyState === 'loading') {
   document.addEventListener('DOMContentLoaded', initializeVolumeControl);
@@ -71,6 +67,9 @@ function initStandardVolumeControl() {
     // Initialize audio context if we found new media and haven't initialized yet
     if (newMediaFound && !audioContext) {
       initializeAudioContext();
+      
+      // Notify background script that this page has audio
+      notifyHasAudio();
     }
   });
 
@@ -88,6 +87,9 @@ function initStandardVolumeControl() {
     pageHasAudio = true;
     existingMedia.forEach(handleMediaElement);
     initializeAudioContext();
+    
+    // Notify background script that this page has audio
+    notifyHasAudio();
   }
 
   // Listen for media playing events at the document level
@@ -98,9 +100,15 @@ function initStandardVolumeControl() {
         if (!audioContext) {
           initializeAudioContext();
         }
+        
+        // Notify background script that this page has audio
+        notifyHasAudio();
       }
     }
   }, true);
+  
+  // Hook media element creation
+  hookMediaElementCreation();
 }
 
 function initializeAudioContext() {
@@ -145,6 +153,9 @@ function handleMediaElement(element) {
     if (!audioContext) {
       initializeAudioContext();
     }
+    
+    // Notify background script that this page has audio
+    notifyHasAudio();
   }, { once: true });
 }
 
@@ -236,7 +247,19 @@ function setupMessageListener() {
     } else if (message.action === "getVolume") {
       sendResponse({volume: currentVolume});
       return true;
+    } else if (message.action === "checkForAudio") {
+      sendResponse({hasAudio: pageHasAudio});
+      return true;
     }
+  });
+}
+
+// Notify background script that this page has audio
+function notifyHasAudio() {
+  browser.runtime.sendMessage({
+    action: "notifyAudio"
+  }).catch(() => {
+    // Ignore errors
   });
 }
 
@@ -261,4 +284,26 @@ function hookMediaElementCreation() {
     }
     return element;
   };
+}
+
+// Function definitions for site-specific handling
+// These would normally be in separate files
+function initYouTubeVolumeControl() {
+  // YouTube-specific code would be here
+  console.log('YouTube volume control initialized');
+}
+
+function setYouTubeVolume(volumeLevel) {
+  // YouTube-specific volume code would be here
+  console.log('Setting YouTube volume to', volumeLevel);
+}
+
+function init9GAGVolumeControl() {
+  // 9GAG-specific code would be here
+  console.log('9GAG volume control initialized');
+}
+
+function set9GAGVolume(volumeLevel) {
+  // 9GAG-specific volume code would be here
+  console.log('Setting 9GAG volume to', volumeLevel);
 }

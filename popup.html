@@ -4,7 +4,7 @@
   <meta charset="utf-8">
   <style>
     body {
-      width: 280px;
+      width: 350px;
       padding: 16px;
       font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, Ubuntu, Cantarell, 'Open Sans', 'Helvetica Neue', sans-serif;
       background-color: #f9f9fa;
@@ -23,58 +23,96 @@
       margin-bottom: 16px;
     }
     
-    .volume-control {
-      display: flex;
-      flex-direction: column;
-      margin: 15px 0;
+    .tabs-container {
+      max-height: 500px;
+      overflow-y: auto;
+      margin-bottom: 16px;
     }
     
-    .volume-display {
+    .tab-item {
+      border: 1px solid #ddd;
+      border-radius: 4px;
+      margin-bottom: 12px;
+      background-color: white;
+      box-shadow: 0 1px 3px rgba(0,0,0,0.08);
+    }
+    
+    .tab-header {
       display: flex;
-      justify-content: center;
       align-items: center;
-      margin-bottom: 15px;
+      padding: 8px 12px;
+      background-color: #f0f0f4;
+      border-radius: 4px 4px 0 0;
+      cursor: pointer;
+      user-select: none;
     }
     
-    .volume-value-container {
-      display: flex;
-      align-items: center;
-      justify-content: center;
-      width: 80px;
-      height: 80px;
-      border-radius: 50%;
-      background: linear-gradient(to right, #0060df, #0a84ff);
-      color: white;
-      font-weight: bold;
-      font-size: 20px;
-      box-shadow: 0 2px 8px rgba(0, 96, 223, 0.3);
-      position: relative;
+    .tab-header:hover {
+      background-color: #e0e0e6;
     }
     
-    .volume-icon {
-      width: 24px;
-      height: 24px;
+    .tab-title {
+      flex-grow: 1;
+      white-space: nowrap;
+      overflow: hidden;
+      text-overflow: ellipsis;
+      max-width: 200px;
+      font-size: 13px;
+    }
+    
+    .tab-icon {
+      width: 16px;
+      height: 16px;
       margin-right: 8px;
-      fill: currentColor;
-      vertical-align: middle;
     }
     
-    .slider-container {
+    .tab-volume-badge {
+      background-color: #0060df;
+      color: white;
+      padding: 2px 6px;
+      border-radius: 12px;
+      font-size: 12px;
+      margin-left: 8px;
+    }
+    
+    .tab-controls {
+      padding: 12px;
+      display: none;
+    }
+    
+    .tab-controls.active {
+      display: block;
+    }
+    
+    .volume-slider-container {
       display: flex;
       align-items: center;
-      margin-bottom: 10px;
+      margin-bottom: 8px;
+    }
+    
+    .volume-value {
+      display: inline-block;
+      width: 48px;
+      text-align: center;
+      font-weight: bold;
+      margin-left: 8px;
+      background-color: #0060df;
+      color: white;
+      padding: 2px 6px;
+      border-radius: 12px;
+      font-size: 12px;
     }
     
     .slider-label {
       font-size: 12px;
       color: #737373;
-      width: 40px;
+      width: 30px;
       text-align: center;
     }
     
     input[type="range"] {
       -webkit-appearance: none;
-      width: 100%;
+      flex-grow: 1;
       height: 6px;
       border-radius: 3px;
       background: linear-gradient(to right, #0060df, #0a84ff);
@@ -103,23 +141,23 @@
       box-shadow: 0 2px 4px rgba(0, 96, 223, 0.3);
     }
     
-    .presets {
+    .tab-presets {
       display: flex;
       justify-content: space-between;
-      margin-bottom: 16px;
+      margin-top: 8px;
     }
     
-    .presets button {
+    .tab-presets button {
       flex: 1;
       margin: 0 4px;
-      font-size: 13px;
-      padding: 8px 0;
+      font-size: 12px;
+      padding: 4px 0;
       border-radius: 4px;
     }
     
     button {
       margin: 5px 0;
-      padding: 10px;
+      padding: 8px 16px;
       background-color: #0060df;
       color: white;
       border: none;
@@ -137,22 +175,26 @@
       background-color: #002275;
     }
     
-    #apply-to-all {
-      background-color: #2a2a2e;
-      margin-bottom: 8px;
+    .global-controls {
+      margin-top: 16px;
+      padding-top: 16px;
+      border-top: 1px solid #ddd;
     }
     
-    #apply-to-all:hover {
-      background-color: #0c0c0d;
+    .global-controls-title {
+      font-size: 16px;
+      font-weight: 600;
+      margin-bottom: 12px;
     }
     
-    #reset {
-      background-color: #b1b1b3;
-      color: #0c0c0d;
+    .global-buttons {
+      display: flex;
+      justify-content: space-between;
     }
     
-    #reset:hover {
-      background-color: #939395;
+    .global-buttons button {
+      flex: 1;
+      margin: 0 4px;
     }
     
     .status-message {
@@ -163,46 +205,83 @@
       font-style: italic;
     }
     
-    .amplification-warning {
-      display: none;
-      margin-top: 12px;
-      padding: 8px;
-      background-color: #ffa436;
+    .muted-badge {
+      background-color: #b1b1b3;
+      color: #0c0c0d;
+    }
+    
+    .amplified-badge {
+      background-color: #ff4f5e;
+    }
+    
+    .expand-icon {
+      width: 14px;
+      height: 14px;
+      transition: transform 0.2s ease;
+      margin-left: 4px;
+    }
+    
+    .expanded .expand-icon {
+      transform: rotate(180deg);
+    }
+    
+    .no-tabs-message {
+      text-align: center;
+      padding: 20px;
+      color: #737373;
+      font-style: italic;
+    }
+    
+    .master-volume {
+      margin-bottom: 16px;
+      background-color: white;
       border-radius: 4px;
-      font-size: 12px;
-      color: #3e2800;
+      border: 1px solid #ddd;
+      padding: 12px;
+      box-shadow: 0 1px 3px rgba(0,0,0,0.08);
+    }
+    
+    .master-volume-title {
+      font-size: 14px;
+      font-weight: 600;
+      margin-bottom: 8px;
+      color: #0060df;
     }
   </style>
 </head>
 <body>
   <h2>Tab Volume Control</h2>
   
-  <div class="volume-display">
-    <div class="volume-value-container">
-      <span id="volume-value">100%</span>
-    </div>
-  </div>
-  
-  <div class="volume-control">
-    <div class="slider-container">
+  <div class="master-volume">
+    <div class="master-volume-title">Master Volume Control</div>
+    <div class="volume-slider-container">
       <span class="slider-label">0%</span>
-      <input type="range" id="volume-slider" min="0" max="500" value="100">
+      <input type="range" id="master-volume-slider" min="0" max="500" value="100">
       <span class="slider-label">500%</span>
+      <span id="master-volume-value" class="volume-value">100%</span>
+    </div>
+    <div class="tab-presets">
+      <button id="master-preset-0">Mute</button>
+      <button id="master-preset-100">100%</button>
+      <button id="master-preset-200">200%</button>
+      <button id="master-preset-500">500%</button>
+    </div>
+    <button id="apply-master-volume" style="width: 100%; margin-top: 8px;">Apply to All Tabs</button>
+  </div>
+  
+  <div class="tabs-container" id="tabs-container">
+    <!-- Tab items will be populated here by JavaScript -->
+    <div class="no-tabs-message" id="no-tabs-message">
+      No tabs with audio detected
     </div>
   </div>
   
-  <div class="presets">
-    <button id="preset-0">Mute</button>
-    <button id="preset-100">100%</button>
-    <button id="preset-200">200%</button>
-    <button id="preset-500">500%</button>
-  </div>
-  
-  <button id="apply-to-all">Apply to All Tabs</button>
-  <button id="reset">Reset to Default (100%)</button>
-  
-  <div id="amplification-warning" class="amplification-warning">
-    Warning: High volume levels may cause audio distortion and could potentially damage your hearing.
+  <div class="global-controls">
+    <div class="global-controls-title">Global Settings</div>
+    <div class="global-buttons">
+      <button id="refresh-tabs">Refresh Tab List</button>
+      <button id="reset-all">Reset All Tabs</button>
+    </div>
   </div>
   
   <div class="status-message" id="status-message"></div>

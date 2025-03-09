@@ -75,6 +75,13 @@ document.addEventListener('DOMContentLoaded', function() {
               // Create UI for each audio tab
               noTabsMessage.style.display = 'none';
               audioTabs.forEach(createTabUI);
+              
+              // Auto-expand tabs if there are 5 or fewer
+              if (audioTabs.length <= 5) {
+                document.querySelectorAll('.tab-header').forEach(header => {
+                  header.click();
+                });
+              }
             }
           });
       })
@@ -202,6 +209,7 @@ document.addEventListener('DOMContentLoaded', function() {
     tabHeader.addEventListener('click', () => {
       tabControls.classList.toggle('active');
       tabHeader.classList.toggle('expanded');
+      expandIcon.innerHTML = tabControls.classList.contains('active') ? '▲' : '▼';
     });
     
     volumeSlider.addEventListener('input', function() {

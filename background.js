@@ -1,5 +1,5 @@
 /**
- * Background script for Tab Volume Control
+ * Background script for Tab Volume Control - Service Worker Version
  * Manages tab state, volume settings, and persistent storage
  */
 
@@ -9,53 +9,107 @@ const DETECTION_DELAY = 2000;  // Delay for audio detection after tab loads
 const VOLUME_APPLY_DELAY = 1500; // Delay for applying volume settings
 
 // State
-const state = {
+// Note: In service workers, you must explicitly persist state,
+// as the worker can be terminated and restarted
+let state = {
   tabVolumes: {},       // Volume settings per tab
   domainVolumes: {},    // Volume settings per domain
   tabAudioStatus: {},   // Which tabs have audio
   tabMediaStatus: {},   // Tabs with media elements (but might not be playing)
-  audibleTabs: new Set() // Set of tabs that are currently audible according to browser
+  audibleTabs: new Set() // Set of tabs that are currently audible
 };
+
+// Convert Set to array for serialization
+function getSerializableState() {
+  return {
+    ...state,
+    audibleTabs: Array.from(state.audibleTabs)
+  };
+}
+
+// Restore Set from array after deserialization
+function restoreState(savedState) {
+  if (!savedState) return;
+  
+  state = {
+    ...savedState,
+    audibleTabs: new Set(savedState.audibleTabs || [])
+  };
+}
 
 /**
  * Initialize the extension
  */
-function initializeExtension() {
-  console.log("Tab Volume Control: Extension initialized");
+async function initializeExtension() {
+  console.log("Tab Volume Control: Extension initialized (Service Worker)");
   
-  // Load saved settings
-  loadSettings();
+  // Load state from storage if available
+  await loadState();
+  
+  // Load settings
+  await loadSettings();
   
   // Initial scan for tabs with audio
-  scanTabsForAudio();
+  await scanTabsForAudio();
   
   // Set up periodic scanning
-  setInterval(scanTabsForAudio, SCAN_INTERVAL);
+  createScanInterval();
+}
+
+/**
+ * Load state from storage
+ */
+async function loadState() {
+  try {
+    const result = await browser.storage.local.get(['extensionState']);
+    if (result.extensionState) {
+      restoreState(result.extensionState);
+      console.log("Tab Volume Control: State loaded");
+    }
+  } catch (error) {
+    console.error("Tab Volume Control: Error loading state", error);
+  }
+}
+
+/**
+ * Save state to storage
+ */
+async function saveState() {
+  try {
+    await browser.storage.local.set({
+      extensionState: getSerializableState()
+    });
+  } catch (err) {
+    console.error("Error saving state:", err);
+  }
 }
 
 /**
  * Load settings from storage
  */
-function loadSettings() {
-  browser.storage.local.get(['domainVolumes'])
-    .then((result) => {
-      if (result.domainVolumes) {
-        state.domainVolumes = result.domainVolumes;
-      }
-      console.log("Tab Volume Control: Settings loaded");
-    })
-    .catch((error) => {
-      console.error("Tab Volume Control: Error loading settings", error);
-    });
+async function loadSettings() {
+  try {
+    const result = await browser.storage.local.get(['domainVolumes']);
+    if (result.domainVolumes) {
+      state.domainVolumes = result.domainVolumes;
+    }
+    console.log("Tab Volume Control: Settings loaded");
+  } catch (error) {
+    console.error("Tab Volume Control: Error loading settings", error);
+  }
 }
 
 /**
  * Save domain volume settings to storage
  */
-function saveDomainVolumes() {
-  browser.storage.local.set({
-    domainVolumes: state.domainVolumes
-  }).catch(err => console.error("Error saving domain volumes:", err));
+async function saveDomainVolumes() {
+  try {
+    await browser.storage.local.set({
+      domainVolumes: state.domainVolumes
+    });
+  } catch (err) {
+    console.error("Error saving domain volumes:", err);
+  }
 }
 
 /**
@@ -73,55 +127,81 @@ function getDomainFromUrl(url) {
 }
 
 /**
+ * Create interval for scanning tabs
+ */
+function createScanInterval() {
+  // Service workers don't support setInterval directly
+  // Use an alarm instead
+  browser.alarms.create('scanTabs', {
+    periodInMinutes: SCAN_INTERVAL / 60000
+  });
+  
+  browser.alarms.onAlarm.addListener((alarm) => {
+    if (alarm.name === 'scanTabs') {
+      scanTabsForAudio();
+    }
+  });
+}
+
+/**
  * Scan all tabs to find ones with audio
  */
-function scanTabsForAudio() {
-  browser.tabs.query({})
-    .then(tabs => {
-      // Reset audible tabs
-      state.audibleTabs.clear();
+async function scanTabsForAudio() {
+  try {
+    const tabs = await browser.tabs.query({});
+    
+    // Reset audible tabs
+    state.audibleTabs.clear();
+    
+    for (const tab of tabs) {
+      // Update audible status from browser
+      if (tab.audible) {
+        state.audibleTabs.add(tab.id);
+        state.tabAudioStatus[tab.id] = true;
+      }
       
-      tabs.forEach(tab => {
-        // Update audible status from browser
-        if (tab.audible) {
-          state.audibleTabs.add(tab.id);
-          state.tabAudioStatus[tab.id] = true;
-        }
-        
-        // Try to detect audio elements
-        tryDetectAudio(tab.id);
-      });
-    });
+      // Try to detect audio elements
+      tryDetectAudio(tab.id);
+    }
+    
+    // Save updated state
+    await saveState();
+  } catch (error) {
+    console.error("Error scanning tabs:", error);
+  }
 }
 
 /**
  * Try to detect audio in a tab
  * @param {number} tabId - Tab ID to check
  */
-function tryDetectAudio(tabId) {
-  browser.tabs.sendMessage(tabId, { action: "checkForAudio" })
-    .then(response => {
-      if (response) {
-        // Update our knowledge of this tab's audio status
-        if (response.hasAudio) {
-          state.tabAudioStatus[tabId] = true;
-        }
-        
-        // Track media elements separately
-        if (response.hasMediaElements) {
-          state.tabMediaStatus[tabId] = true;
-        }
-        
-        // If the tab reports active audio, make sure it's in our audible list
-        if (response.hasActiveAudio) {
-          state.audibleTabs.add(tabId);
-          state.tabAudioStatus[tabId] = true;
-        }
+async function tryDetectAudio(tabId) {
+  try {
+    const response = await browser.tabs.sendMessage(tabId, { action: "checkForAudio" });
+    
+    if (response) {
+      // Update our knowledge of this tab's audio status
+      if (response.hasAudio) {
+        state.tabAudioStatus[tabId] = true;
       }
-    })
-    .catch(() => {
-      // Ignore errors - content script may not be loaded yet
-    });
+      
+      // Track media elements separately
+      if (response.hasMediaElements) {
+        state.tabMediaStatus[tabId] = true;
+      }
+      
+      // If the tab reports active audio, make sure it's in our audible list
+      if (response.hasActiveAudio) {
+        state.audibleTabs.add(tabId);
+        state.tabAudioStatus[tabId] = true;
+      }
+      
+      // Save updated state
+      await saveState();
+    }
+  } catch (error) {
+    // Ignore errors - content script may not be loaded yet
+  }
 }
 
 /**
@@ -141,26 +221,12 @@ function applyVolumeToTab(tabId, volume) {
 }
 
 /**
- * Set up event listeners
- */
-function setupEventListeners() {
-  // Tab updates
-  browser.tabs.onUpdated.addListener(handleTabUpdated);
-  
-  // Tab removal
-  browser.tabs.onRemoved.addListener(handleTabRemoved);
-  
-  // Messages from content scripts and popup
-  browser.runtime.onMessage.addListener(handleMessage);
-}
-
-/**
  * Handle tab updated event
  * @param {number} tabId - ID of the updated tab
  * @param {object} changeInfo - Information about the change
  * @param {object} tab - Tab object
  */
-function handleTabUpdated(tabId, changeInfo, tab) {
+async function handleTabUpdated(tabId, changeInfo, tab) {
   // Track if tab becomes audible
   if (changeInfo.audible !== undefined) {
     if (changeInfo.audible) {
@@ -170,6 +236,9 @@ function handleTabUpdated(tabId, changeInfo, tab) {
       state.audibleTabs.delete(tabId);
       // Don't clear tabAudioStatus here, as it's used for tab listing
     }
+    
+    // Save updated state
+    await saveState();
   }
   
   if (changeInfo.status === 'complete' && tab.url) {
@@ -190,7 +259,7 @@ function handleTabUpdated(tabId, changeInfo, tab) {
  * Handle tab removed event
  * @param {number} tabId - ID of the removed tab
  */
-function handleTabRemoved(tabId) {
+async function handleTabRemoved(tabId) {
   // Clean up storage
   if (state.tabVolumes[tabId]) {
     delete state.tabVolumes[tabId];
@@ -205,16 +274,18 @@ function handleTabRemoved(tabId) {
   }
   
   state.audibleTabs.delete(tabId);
+  
+  // Save updated state
+  await saveState();
 }
 
 /**
  * Handle messages from content scripts and popup
  * @param {object} message - Message object
  * @param {object} sender - Sender information
- * @param {function} sendResponse - Function to send response
- * @returns {boolean} True if response will be sent asynchronously
+ * @returns {Promise} Promise that resolves with a response
  */
-function handleMessage(message, sender, sendResponse) {
+async function handleMessage(message, sender) {
   // Handle volume change notification from content script
   if (message.action === "volumeChanged" && sender.tab) {
     const tabId = sender.tab.id;
@@ -231,20 +302,23 @@ function handleMessage(message, sender, sendResponse) {
       const domain = getDomainFromUrl(sender.tab.url);
       if (domain) {
         state.domainVolumes[domain] = volume;
-        saveDomainVolumes();
+        await saveDomainVolumes();
       }
     }
+    
+    // Save updated state
+    await saveState();
+    return;
   }
   
   // Handle request for domain volume
   else if (message.action === "getDomainVolume" && sender.tab && sender.tab.url) {
     const domain = getDomainFromUrl(sender.tab.url);
     if (domain && state.domainVolumes[domain]) {
-      sendResponse({ volume: state.domainVolumes[domain] });
+      return { volume: state.domainVolumes[domain] };
     } else {
-      sendResponse({ volume: null });
+      return { volume: null };
     }
-    return true;
   }
   
   // Handle request for tab audio status
@@ -264,8 +338,7 @@ function handleMessage(message, sender, sendResponse) {
       }
     }
     
-    sendResponse({ tabAudioStatus: audiblTabsObj });
-    return true;
+    return { tabAudioStatus: audiblTabsObj };
   }
   
   // Handle request to save domain volume
@@ -273,23 +346,21 @@ function handleMessage(message, sender, sendResponse) {
     const domain = getDomainFromUrl(sender.tab.url);
     if (domain) {
       state.domainVolumes[domain] = message.volume;
-      saveDomainVolumes();
-      sendResponse({ success: true });
+      await saveDomainVolumes();
+      return { success: true };
     } else {
-      sendResponse({ success: false });
+      return { success: false };
     }
-    return true;
   }
   
   // Handle request to get volume for a tab
   else if (message.action === "getTabVolume") {
     const tabId = message.tabId;
     if (state.tabVolumes[tabId]) {
-      sendResponse({ volume: state.tabVolumes[tabId] });
+      return { volume: state.tabVolumes[tabId] };
     } else {
-      sendResponse({ volume: null });
+      return { volume: null };
     }
-    return true;
   }
   
   // Handle notification that a tab has audio
@@ -302,13 +373,16 @@ function handleMessage(message, sender, sendResponse) {
       state.audibleTabs.add(tabId);
     }
     
-    sendResponse({ success: true });
-    return true;
+    // Save updated state
+    await saveState();
+    return { success: true };
   }
 }
 
 // Set up event listeners
-setupEventListeners();
+browser.tabs.onUpdated.addListener(handleTabUpdated);
+browser.tabs.onRemoved.addListener(handleTabRemoved);
+browser.runtime.onMessage.addListener(handleMessage);
 
 // Initialize the extension
 initializeExtension();

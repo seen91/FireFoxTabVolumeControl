@@ -1,15 +1,17 @@
 {
-  "manifest_version": 2,
+  "manifest_version": 3,
   "name": "Tab Volume Control",
   "version": "1.0.0",
   "description": "Control volume for individual browser tabs from 0% to 500%. I originally created this for my personal use after being tired of looking through shady add-ons with overreaching permissions. Features include multi-tab control, preset volume levels, and special handling for YouTube and other media sites. I hope others find it useful too!",
   "permissions": [
     "activeTab",
     "tabs",
-    "<all_urls>",
     "storage"
   ],
-  "browser_action": {
+  "host_permissions": [
+    "<all_urls>"
+  ],
+  "action": {
     "default_icon": {
       "16": "icons/icon16.svg",
       "48": "icons/icon48.svg",
@@ -19,7 +21,8 @@
     "default_popup": "popup.html"
   },
   "background": {
-    "scripts": ["background.js"]
+    "scripts": ["background.js"],
+    "type": "module"
   },
   "content_scripts": [{
     "matches": ["<all_urls>"],
@@ -29,9 +32,10 @@
     ],
     "run_at": "document_start"
   }],
-  "web_accessible_resources": [
-    "site-handlers/*.js"
-  ],
+  "web_accessible_resources": [{
+    "resources": ["site-handlers/*.js"],
+    "matches": ["<all_urls>"]
+  }],
   "icons": {
     "16": "icons/icon16.svg",
     "48": "icons/icon48.svg",
@@ -40,5 +44,11 @@
   "author": "Sebastian Engvall",
   "homepage_url": "https://github.com/seen91/FireFoxTabVolumeControl",
   "license": "MIT",
-  "copyright": "Copyright © 2025 Sebastian Engvall. This add-on is provided under the MIT License. Feel free to use, modify, and distribute the code as long as you include the original copyright notice. The full license is available at the repository."
+  "copyright": "Copyright © 2025 Sebastian Engvall. This add-on is provided under the MIT License. Feel free to use, modify, and distribute the code as long as you include the original copyright notice. The full license is available at the repository.",
+  "browser_specific_settings": {
+    "gecko": {
+      "id": "tab-volume-control@sebastianengvall.github.io",
+      "strict_min_version": "89.0"
+    }
+  }
 }

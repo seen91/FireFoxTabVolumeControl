@@ -1,0 +1,63 @@
+# Firefox Tab Volume Control
+
+A Firefox add-on that lets you control the volume of individual browser tabs from 0% to 500%.
+
+## Features
+
+- **Individual Tab Control**: Adjust volume separately for each tab playing audio
+- **Volume Amplification**: Boost quiet audio up to 500% of the original volume
+- **Multi-Tab Interface**: See and control all audio tabs from a single popup
+- **Master Volume Control**: Apply the same volume level to all tabs at once
+- **Volume Presets**: Quick buttons for common volume levels (Mute, 100%, 200%, 500%)
+- **Special Site Support**: Enhanced compatibility with YouTube and other media sites
+- **Auto-Expanded Controls**: Automatically expands controls when 5 or fewer tabs have audio
+
+## Why I Created This
+
+I originally built this add-on for my personal use because I often found myself needing to:
+
+- Boost the volume of quiet videos beyond what browsers normally allow
+- Control multiple audio sources independently without changing my system volume
+- Quickly mute specific tabs while keeping others playing
+
+I was also tired of looking for shady add-ons with overreaching permissions that asked for unnecessary access to my browsing data. I wanted something simple, focused, and trustworthy that only did what it claimed to do.
+
+After finding it useful myself, I decided to share it with the Firefox community in case others might benefit from it too.
+
+## Installation
+
+### From Firefox Add-ons
+[Link to Firefox Add-ons page when published]
+
+### Manual Installation
+1. Download the latest release from [GitHub](https://github.com/seen91/FireFoxTabVolumeControl/releases)
+2. In Firefox, go to `about:debugging` → This Firefox → Load Temporary Add-on
+3. Select any file from the downloaded extension folder
+
+## Usage
+
+1. Click the volume icon in the toolbar to open the control panel
+2. Each tab with audio will be listed with its own volume control
+3. Use the slider or preset buttons to adjust volume for each tab
+4. Use the master volume control at the top to adjust all tabs at once
+5. Changes apply immediately as you adjust the volume
+
+## Technical Details
+
+The add-on uses the Web Audio API to modify audio output:
+- Values below 100% reduce volume normally
+- Values above 100% amplify the audio (similar to a preamplifier)
+- Maximum amplification is 500%, which is usually sufficient for most quiet media
+
+## License
+
+This project is licensed under the MIT License - see the [LICENSE.md](LICENSE.md) file for details.
+
+## Contributing
+
+Feel free to fork the repository, make changes, and submit pull requests. I welcome any improvements or bug fixes!
+
+## Acknowledgments
+
+- The Firefox WebExtensions API
+- Web Audio API

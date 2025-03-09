@@ -2,7 +2,7 @@
   "manifest_version": 2,
   "name": "Tab Volume Control",
   "version": "1.0.0",
-  "description": "Adjust the volume of individual tabs from 0% to 500%",
+  "description": "Control volume for individual browser tabs from 0% to 500%. I originally created this for my personal use after being tired of looking through shady add-ons with overreaching permissions. Features include multi-tab control, preset volume levels, and special handling for YouTube and other media sites. I hope others find it useful too!",
   "permissions": [
     "activeTab",
     "tabs",
@@ -38,5 +38,7 @@
     "128": "icons/icon128.svg"
   },
   "author": "Sebastian Engvall",
-  "homepage_url": "https://www.linkedin.com/in/sebastian-engvall-45181a131/"
+  "homepage_url": "https://github.com/seen91/FireFoxTabVolumeControl",
+  "license": "MIT",
+  "copyright": "Copyright © 2025 Sebastian Engvall. This add-on is provided under the MIT License. Feel free to use, modify, and distribute the code as long as you include the original copyright notice. The full license is available at the repository."
 }

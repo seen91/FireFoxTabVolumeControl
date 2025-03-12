@@ -171,37 +171,39 @@ async function scanTabsForAudio() {
   }
 }
 
+function is9GAGTab(tab) {
+  try {
+    return tab.url && tab.url.includes('9gag.com');
+  } catch (e) {
+    return false;
+  }
+}
+
 /**
  * Try to detect audio in a tab
  * @param {number} tabId - Tab ID to check
  */
-async function tryDetectAudio(tabId) {
-  try {
-    const response = await browser.tabs.sendMessage(tabId, { action: "checkForAudio" });
-    
-    if (response) {
-      // Update our knowledge of this tab's audio status
-      if (response.hasAudio) {
-        state.tabAudioStatus[tabId] = true;
-      }
-      
-      // Track media elements separately
-      if (response.hasMediaElements) {
-        state.tabMediaStatus[tabId] = true;
-      }
-      
-      // If the tab reports active audio, make sure it's in our audible list
-      if (response.hasActiveAudio) {
-        state.audibleTabs.add(tabId);
-        state.tabAudioStatus[tabId] = true;
-      }
-      
-      // Save updated state
-      await saveState();
+function tryDetectAudio(tabId) {
+  browser.tabs.get(tabId).then(tab => {
+    // Special case for 9GAG
+    if (is9GAGTab(tab)) {
+      state.tabAudioStatus[tabId] = true;
+      return;
     }
-  } catch (error) {
-    // Ignore errors - content script may not be loaded yet
-  }
+    
+    // Normal detection for other sites
+    browser.tabs.sendMessage(tabId, { action: "checkForAudio" })
+      .then(response => {
+        if (response && response.hasAudio) {
+          state.tabAudioStatus[tabId] = true;
+        }
+      })
+      .catch(() => {
+        // Ignore errors - content script may not be loaded yet
+      });
+  }).catch(() => {
+    // Tab might not exist anymore
+  });
 }
 
 /**

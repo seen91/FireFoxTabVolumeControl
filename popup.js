@@ -137,39 +137,39 @@ document.addEventListener('DOMContentLoaded', function() {
   }
   
   // Get volume information for a tab - returns a Promise
-  function getTabVolumeInfo(tab) {
-    return new Promise(resolve => {
-      // Set a timeout in case the tab doesn't respond
-      const timeout = setTimeout(() => {
-        tab.hasAudio = false;
-        resolve(tab);
-      }, AUDIO_DETECTION_TIMEOUT);
-      
-      // Try to get the tab's volume
-      browser.tabs.sendMessage(tab.id, { action: "getVolume" })
-        .then(response => {
-          clearTimeout(timeout);
-          
-          if (response && response.volume !== undefined) {
-            // Tab has volume control
-            tab.volume = response.volume;
-            tab.hasAudio = true;
-            state.tabVolumes[tab.id] = response.volume;
-            resolve(tab);
-          } else {
-            // Tab doesn't have volume control
-            tab.hasAudio = false;
-            resolve(tab);
-          }
-        })
-        .catch(() => {
-          clearTimeout(timeout);
-          // Error fetching volume, tab probably doesn't have audio
+function getTabVolumeInfo(tab) {
+  return new Promise(resolve => {
+    // Special case for 9GAG - always treat as having audio
+    if (tab.url && tab.url.includes('9gag.com')) {
+      tab.hasAudio = true;
+      tab.volume = 1.0; // Default volume
+      state.tabVolumes[tab.id] = 1.0;
+      resolve(tab);
+      return;
+    }
+    
+    // Regular flow for other tabs
+    browser.tabs.sendMessage(tab.id, { action: "getVolume" })
+      .then(response => {
+        if (response && response.volume !== undefined) {
+          // Tab has volume control
+          tab.volume = response.volume;
+          tab.hasAudio = true;
+          state.tabVolumes[tab.id] = response.volume;
+          resolve(tab);
+        } else {
+          // Tab doesn't have volume control or couldn't get it
           tab.hasAudio = false;
           resolve(tab);
-        });
-    });
-  }
+        }
+      })
+      .catch(() => {
+        // Error fetching volume, tab probably doesn't have audio
+        tab.hasAudio = false;
+        resolve(tab);
+      });
+  });
+}
   
   // Create UI for a single tab
   function createTabUI(tab) {

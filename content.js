@@ -324,6 +324,7 @@ function setStandardVolume(volumeLevel) {
  * Set up message listener for extension communication
  */
 function setupMessageListener() {
+  // Listen for messages from the extension
   browser.runtime.onMessage.addListener((message, sender, sendResponse) => {
     if (message.action === "setVolume") {
       setVolume(message.volume);
@@ -333,12 +334,12 @@ function setupMessageListener() {
       sendResponse({volume: state.currentVolume});
       return true;
     } else if (message.action === "checkForAudio") {
-      const hasActiveAudio = checkForActiveAudio();
-      sendResponse({
-        hasAudio: state.pageHasAudio && state.pageHasActiveAudio, 
-        hasMediaElements: state.pageHasAudio,
-        hasActiveAudio: hasActiveAudio
-      });
+      // Special case for 9GAG - always report as having audio
+      if (window.location.hostname.includes('9gag.com')) {
+        sendResponse({hasAudio: true});
+      } else {
+        sendResponse({hasAudio: state.pageHasAudio});
+      }
       return true;
     }
   });

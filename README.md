@@ -27,7 +27,7 @@ After finding it useful myself, I decided to share it with the Firefox community
 ## Installation
 
 ### From Firefox Add-ons
-[Link to Firefox Add-ons page when published]
+[Firefox Add-ons page](https://addons.mozilla.org/en-US/firefox/addon/tab-volume-control/)
 
 ### Manual Installation
 1. Download the latest release from [GitHub](https://github.com/seen91/FireFoxTabVolumeControl/releases)

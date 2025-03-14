@@ -70,54 +70,69 @@ function findModuleForHostname(hostname) {
  */
 function loadModule(path) {
   try {
+    // For 9gag site, we'll skip module loading entirely
+    // The content script will handle everything directly
+    if (path.includes('9gag-handler.js')) {
+      console.log('Module Loader: Skipping 9GAG handler loading, using direct content script handling');
+      
+      // Notify content script that we're skipping the module
+      window.postMessage({
+        source: "module-loader",
+        action: "moduleSkipped",
+        modulePath: path,
+        reason: "Using direct content script handling for 9GAG"
+      }, "*");
+      
+      return;
+    }
+    
+    // Regular script loading for other modules
     const script = document.createElement('script');
     script.src = browser.runtime.getURL(path);
+    
     script.onload = () => {
       console.log(`Volume Control: Successfully loaded ${path}`);
+      
+      // For 9gag specifically, verify handler functions were properly exposed
+      if (path.includes('9gag-handler.js')) {
+        if (window.init9GagVolumeControl && window.set9GagVolume) {
+          console.log('Module Loader: 9GAG handler functions successfully exposed');
+        } else {
+          console.error('Module Loader: 9GAG handler functions not exposed after loading!');
+        }
+      }
       
       // Notify content script that module has loaded
       window.postMessage({
         source: "module-loader",
         action: "moduleLoaded",
         modulePath: path,
-        success: true
+        success: true,
+        hasFunctions: path.includes('9gag-handler.js') ? {
+          init: !!window.init9GagVolumeControl,
+          setVolume: !!window.set9GagVolume
+        } : null
       }, "*");
       
-      // For 9gag, use a different approach to ensure functions are available
-      if (path.includes('9gag-handler.js')) {
-        // Verify handler functions are available
-        setTimeout(() => {
-          const handlerAvailable = typeof window.init9GagVolumeControl === 'function';
-          console.log(`Module Loader: 9GAG handler availability: ${handlerAvailable}`);
+      // For 9gag specifically, directly initialize the handler after loading
+      if (path.includes('9gag-handler.js') && window.init9GagVolumeControl) {
+        // Use default volume for now, content script will update it later
+        console.log('Module Loader: Initializing 9GAG handler directly after load');
+        try {
+          window.init9GagVolumeControl(1.0);
           
-          if (handlerAvailable) {
-            console.log('Module Loader: Initializing 9GAG handler directly');
-            try {
-              // Initialize with default volume
-              window.init9GagVolumeControl(1.0);
-              
-              // Notify about initialization
-              window.postMessage({
-                source: "module-loader",
-                action: "moduleInitialized",
-                moduleName: "9GAG",
-                success: true
-              }, "*");
-            } catch (err) {
-              console.error('Module Loader: Error initializing 9GAG handler:', err);
-              window.postMessage({
-                source: "module-loader",
-                action: "moduleInitError",
-                moduleName: "9GAG",
-                error: err.message
-              }, "*");
-            }
-          } else {
-            console.warn('Module Loader: 9GAG handler functions not found after load');
-          }
-        }, 100);
+          // Notify about direct initialization
+          window.postMessage({
+            source: "module-loader",
+            action: "moduleInitialized",
+            moduleName: "9GAG"
+          }, "*");
+        } catch (error) {
+          console.error('Module Loader: Error initializing 9GAG handler:', error);
+        }
       }
     };
+    
     script.onerror = (error) => {
       console.error(`Volume Control: Error loading ${path}`, error);
       
@@ -134,6 +149,7 @@ function loadModule(path) {
         loadModule(MODULES.standard.path);
       }
     };
+    
     document.head.appendChild(script);
   } catch (error) {
     console.error('Volume Control: Error loading module', error);

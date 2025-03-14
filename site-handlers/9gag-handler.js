@@ -1,40 +1,32 @@
 /**
  * 9GAG-specific volume control handler
  */
+console.log("[9GAG Handler] Script loading started");
 
-// Immediately make functions available in the global scope
-window.init9GagVolumeControl = init9GagVolumeControl;
-window.set9GagVolume = set9GagVolume;
-window.test9GagVolume = test9GagVolume;
-
-// Initialize variables
-let currentVolume = 1.0;
-let observer = null;
-let isSettingVolume = false;
-let isInitialized = false;
-
-console.log("[9GAG Handler] Script loaded, functions exported");
+// Initialize variables in global scope
+var currentVolume = 1.0;
+var observer = null;
+var isSettingVolume = false;
+var initialized = false;
 
 /**
  * Initialize volume control for 9GAG
  */
 function init9GagVolumeControl(initialVolume) {
-  if (isInitialized) {
+  if (initialized) {
     console.log("[9GAG Handler] Already initialized, updating volume to:", initialVolume);
-    if (initialVolume !== undefined) {
-      currentVolume = Math.min(initialVolume, 1.0);
-      applyVolumeToAllVideos();
-    }
+    currentVolume = Math.min(initialVolume !== undefined ? initialVolume : 1.0, 1.0);
+    applyVolumeToAllVideos();
     return;
   }
   
   console.log("[9GAG Handler] Initializing with volume:", initialVolume);
+  initialized = true;
   
   // Set initial volume (capped at 1.0)
   currentVolume = Math.min(initialVolume !== undefined ? initialVolume : 1.0, 1.0);
   
   // Mark as initialized
-  isInitialized = true;
   window._9gagVolumeHandlerActive = true;
   
   // Set up handlers
@@ -42,14 +34,13 @@ function init9GagVolumeControl(initialVolume) {
   setupVideoEventListeners();
   
   // Apply initial volume after a short delay
-  setTimeout(applyVolumeToAllVideos, 200);
-  setTimeout(applyVolumeToAllVideos, 1000);
+  setTimeout(applyVolumeToAllVideos, 500);
+  setTimeout(applyVolumeToAllVideos, 1500);
   
   // Notify that we're ready
   notifyHasAudio();
   
   console.log("[9GAG Handler] Initialization complete");
-  return true;
 }
 
 /**
@@ -117,7 +108,7 @@ function applyVolumeToVideo(video) {
     // Set volume directly
     video.volume = currentVolume;
     
-    console.log("[9GAG Handler] Volume set to", currentVolume, "on", video);
+    console.log("[9GAG Handler] Volume set to", currentVolume, "on video");
   } catch (error) {
     console.error("[9GAG Handler] Error setting volume:", error);
   }
@@ -131,9 +122,7 @@ function applyVolumeToAllVideos() {
   console.log("[9GAG Handler] Found", videos.length, "videos");
   
   videos.forEach(applyVolumeToVideo);
-  
-  // Return true if we found any videos
-  return videos.length > 0;
+  return videos.length;
 }
 
 /**
@@ -144,14 +133,12 @@ function set9GagVolume(volume) {
   currentVolume = Math.min(volume, 1.0);
   
   console.log("[9GAG Handler] Setting volume to", currentVolume);
-  
-  // Apply to all videos
-  const result = applyVolumeToAllVideos();
+  const videoCount = applyVolumeToAllVideos();
   
   // Try again after a short delay to catch any videos that might be loading
   setTimeout(applyVolumeToAllVideos, 200);
   
-  return result;
+  return videoCount; // Return count of videos for debugging
 }
 
 /**
@@ -177,4 +164,27 @@ function test9GagVolume() {
   });
   
   return videos.length;
+}
+
+// Force export functions to global scope with var to ensure they're globally visible
+var init9GagVolumeControl = init9GagVolumeControl;
+var set9GagVolume = set9GagVolume;
+var test9GagVolume = test9GagVolume;
+
+// Use direct property assignment, which is more reliable than declarations
+window.init9GagVolumeControl = init9GagVolumeControl;
+window.set9GagVolume = set9GagVolume;
+window.test9GagVolume = test9GagVolume;
+
+// Mark as loaded for content script to check
+window.init9GagVolumeControlLoaded = true;
+
+// Force exports to be visible in the global scope
+{
+  const exportedFunctions = {
+    init9GagVolumeControl: !!window.init9GagVolumeControl,
+    set9GagVolume: !!window.set9GagVolume,
+    test9GagVolume: !!window.test9GagVolume
+  };
+  console.log("[9GAG Handler] Functions exported to window:", exportedFunctions);
 }

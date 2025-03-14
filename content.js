@@ -27,31 +27,183 @@ if (document.readyState === 'loading') {
 }
 
 /**
+ * Execute code directly in the page context to check for handler availability
+ * @param {Function} callback - Function to receive the result
+ */
+function check9GagHandlerAvailability(callback) {
+  const script = document.createElement('script');
+  const id = 'check_9gag_' + Date.now();
+  
+  script.textContent = `
+    try {
+      const result = {
+        init9GagAvailable: typeof window.init9GagVolumeControl === 'function',
+        set9GagAvailable: typeof window.set9GagVolume === 'function'
+      };
+      window.postMessage({
+        source: "availability-check",
+        id: "${id}",
+        result: result
+      }, "*");
+    } catch (e) {
+      window.postMessage({
+        source: "availability-check",
+        id: "${id}",
+        error: e.message
+      }, "*");
+    }
+  `;
+  
+  // Set up one-time listener for the response
+  const listener = function(event) {
+    if (event.source !== window) return;
+    const data = event.data;
+    
+    if (data && data.source === "availability-check" && data.id === id) {
+      window.removeEventListener('message', listener);
+      document.body.removeChild(script);
+      callback(data.result, data.error);
+    }
+  };
+  
+  window.addEventListener('message', listener);
+  document.body.appendChild(script);
+}
+
+/**
+ * Initialize 9GAG handler with fallbacks
+ * @param {number} volume - Initial volume level
+ */
+function initialize9GagHandler(volume) {
+  console.log('[Content] Checking 9GAG handler availability');
+  
+  check9GagHandlerAvailability((result, error) => {
+    if (error) {
+      console.error('[Content] Error checking 9GAG handler:', error);
+      initStandardVolumeControl(); // Fallback to standard
+      return;
+    }
+    
+    if (result && result.init9GagAvailable) {
+      console.log('[Content] 9GAG handler found, initializing');
+      
+      // Execute the handler initialization directly in page context
+      const script = document.createElement('script');
+      script.textContent = `
+        try {
+          window.init9GagVolumeControl(${volume});
+          console.log("[Page Context] 9GAG handler initialized");
+        } catch (e) {
+          console.error("[Page Context] Error initializing 9GAG handler:", e);
+        }
+      `;
+      document.body.appendChild(script);
+      setTimeout(() => document.body.removeChild(script), 100);
+      
+      state.pageHasAudio = true;
+      state.using9GagHandler = true;
+      notifyHasAudio();
+    } else {
+      console.warn('[Content] 9GAG handler functions not available, using standard approach');
+      initStandardVolumeControl();
+    }
+  });
+}
+
+/**
  * Main initialization function
  */
 function initialize() {
   if (state.initialized) return;
   state.initialized = true;
 
+  // Set up handler for window messages (for site handlers to communicate)
+  setupWindowMessageListener();
+  setupMessageListener(); // Always set up the extension message listener
+
   // Get current hostname for site-specific handling
   const hostname = window.location.hostname;
   
-  // Use site-specific handlers if needed
-  if (hostname.includes('youtube.com')) {
-    initYouTubeVolumeControl();
+  // For 9GAG, use a more direct approach
+  if (hostname.includes('9gag.com')) {
+    console.log('[Content] On 9GAG, initializing handler');
+    
+    // Wait for page to be fully loaded
+    if (document.readyState !== 'complete') {
+      window.addEventListener('load', () => {
+        initialize9GagHandler(state.currentVolume);
+      });
+    } else {
+      // Page already loaded, initialize directly
+      initialize9GagHandler(state.currentVolume);
+    }
     return;
-  } else if (hostname.includes('9gag.com')) {
-    console.log('Volume Control: Using 9GAG-specific handler');
-    // When running in the extension, this will be imported from a separate file
+  } else if (hostname.includes('youtube.com')) {
+    initYouTubeVolumeControl();
     return;
   }
 
   // Standard initialization for most sites
   initStandardVolumeControl();
-  setupMessageListener();
 
   // Start periodic checks for audio activity
   state.audioCheckInterval = setInterval(checkForActiveAudio, AUDIO_CHECK_INTERVAL);
+}
+
+/**
+ * Set up listener for window messages from site handlers and module loader
+ */
+function setupWindowMessageListener() {
+  window.addEventListener('message', function(event) {
+    // Only accept messages from the same window
+    if (event.source !== window) return;
+    
+    const data = event.data;
+    
+    // Handle messages from site handlers
+    if (data && data.source) {
+      // Handle module loader messages
+      if (data.source === "module-loader") {
+        console.log("[Content] Module loader message:", data.action);
+        
+        if (data.action === "moduleLoaded" && data.modulePath.includes("9gag-handler.js")) {
+          console.log("[Content] 9GAG handler module loaded, checking for functions");
+          
+          // Re-check for 9GAG handler after a short delay to ensure script executed
+          setTimeout(() => {
+            if (window.init9GagVolumeControl && window.set9GagVolume) {
+              console.log("[Content] 9GAG handler functions found, initializing");
+              window.init9GagVolumeControl(state.currentVolume);
+              state.pageHasAudio = true;
+              state.using9GagHandler = true;
+              notifyHasAudio();
+            } else {
+              console.error("[Content] 9GAG handler functions not available after load");
+            }
+          }, 100);
+        } else if (data.action === "moduleInitialized" && data.moduleName === "9GAG") {
+          console.log("[Content] 9GAG handler was initialized by module loader");
+          
+          // Update the handler with our current volume
+          if (window.set9GagVolume) {
+            window.set9GagVolume(Math.min(state.currentVolume, 1.0));
+          }
+        }
+      }
+      // Handle site handler messages
+      else if (data.source === '9gag-handler' || 
+               data.source === 'youtube-handler' || 
+               data.source === 'reddit-handler') {
+        
+        // Handle the message based on action
+        if (data.action === 'notifyAudio') {
+          state.pageHasAudio = true;
+          state.pageHasActiveAudio = data.hasActiveAudio;
+          notifyHasAudio();
+        }
+      }
+    }
+  }, false);
 }
 
 /**
@@ -199,7 +351,14 @@ function initializeAudioContext() {
  * @param {HTMLMediaElement} element - The media element to handle
  */
 function handleMediaElement(element) {
-  if (state.audioElements.has(element)) return; // Already handling this element
+  // Skip if already handling this element
+  if (state.audioElements.has(element)) return;
+  
+  // Skip if this element is managed by the 9GAG handler
+  if (element._managed_by_9gag_handler || window._9gagVolumeHandlerActive) {
+    console.log('Volume control: Skipping element managed by 9GAG handler');
+    return;
+  }
   
   state.pageHasAudio = true;
   state.audioElements.add(element);
@@ -214,7 +373,7 @@ function handleMediaElement(element) {
   applyVolumeToElement(element, state.currentVolume);
   
   // If audio context already exists, connect this element
-  if (state.audioContext && state.gainNode) {
+  if (state.audioContext && state.gainNode && !state.using9GagHandler) {
     connectElementToGainNode(element);
   }
   
@@ -235,6 +394,13 @@ function handleMediaElement(element) {
 function connectElementToGainNode(element) {
   // Don't reconnect if already connected
   if (state.mediaSourceNodes.has(element)) return;
+  
+  // Skip if this is a 9GAG video - they don't work well with AudioContext
+  if (element._managed_by_9gag_handler || window._9gagVolumeHandlerActive || 
+      window.location.hostname.includes('9gag.com')) {
+    console.log('Volume control: Skipping AudioContext for 9GAG video');
+    return;
+  }
   
   try {
     // Create a new MediaElementSourceNode
@@ -286,18 +452,63 @@ function setVolume(volumeLevel) {
   browser.runtime.sendMessage({
     action: "volumeChanged",
     volume: volumeLevel
+  }).catch(err => {
+    console.warn("[Content] Error notifying background:", err);
   });
 
   // Determine if we need to use site-specific volume handling
   const hostname = window.location.hostname;
   
-  if (hostname.includes('youtube.com')) {
+  // For 9GAG, ensure we apply volume through the handler or directly
+  if (hostname.includes('9gag.com')) {
+    // For 9GAG, we cap the volume at 100% as amplification doesn't work properly
+    const cappedVolume = Math.min(volumeLevel, 1.0);
+    console.log("[Content] Setting 9GAG volume to:", cappedVolume);
+    
+    // Try using the handler first
+    check9GagHandlerAvailability((result, error) => {
+      if (error || !result || !result.set9GagAvailable) {
+        // Handler not available, apply directly
+        applyDirectVolume(cappedVolume);
+      } else {
+        // Use the handler in page context
+        const script = document.createElement('script');
+        script.textContent = `
+          try {
+            window.set9GagVolume(${cappedVolume});
+            console.log("[Page Context] Volume set to ${cappedVolume}");
+          } catch (e) {
+            console.error("[Page Context] Error setting volume:", e);
+          }
+        `;
+        document.body.appendChild(script);
+        setTimeout(() => document.body.removeChild(script), 100);
+      }
+    });
+    return;
+  } else if (hostname.includes('youtube.com')) {
     setYouTubeVolume(volumeLevel);
     return;
   }
 
-  // Standard volume handling
+  // Standard volume handling for non-site-specific cases
   setStandardVolume(volumeLevel);
+}
+
+/**
+ * Apply volume directly to all video elements on the page
+ * @param {number} volume - Volume level (0.0 to 1.0)
+ */
+function applyDirectVolume(volume) {
+  try {
+    const videos = document.querySelectorAll('video');
+    videos.forEach(video => video.volume = volume);
+    console.log("[Content] Applied volume directly to", videos.length, "videos");
+    return videos.length > 0;
+  } catch (e) {
+    console.error("[Content] Error applying direct volume:", e);
+    return false;
+  }
 }
 
 /**

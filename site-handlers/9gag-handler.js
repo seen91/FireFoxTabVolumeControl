@@ -1,161 +1,180 @@
-// 9gag-handler.js - 9GAG-specific volume control
+/**
+ * 9GAG-specific volume control handler
+ */
 
-// 9GAG-specific module variables
-let gagCurrentVolume = 1.0;
-let gagAudioElements = new Set();
-let gagInitialized = false;
+// Immediately make functions available in the global scope
+window.init9GagVolumeControl = init9GagVolumeControl;
+window.set9GagVolume = set9GagVolume;
+window.test9GagVolume = test9GagVolume;
 
-// Initialize 9GAG-specific volume control
-function init9GAGVolumeControl() {
-  if (gagInitialized) return;
-  gagInitialized = true;
+// Initialize variables
+let currentVolume = 1.0;
+let observer = null;
+let isSettingVolume = false;
+let isInitialized = false;
+
+console.log("[9GAG Handler] Script loaded, functions exported");
+
+/**
+ * Initialize volume control for 9GAG
+ */
+function init9GagVolumeControl(initialVolume) {
+  if (isInitialized) {
+    console.log("[9GAG Handler] Already initialized, updating volume to:", initialVolume);
+    if (initialVolume !== undefined) {
+      currentVolume = Math.min(initialVolume, 1.0);
+      applyVolumeToAllVideos();
+    }
+    return;
+  }
   
-  console.log('Volume control: 9GAG-specific handler initialized');
-  console.log('Volume control: Note - 9GAG volume amplification limited to 100% to prevent audio issues');
+  console.log("[9GAG Handler] Initializing with volume:", initialVolume);
   
-  // Immediately notify the background script that this page has audio
-  // This ensures 9GAG tabs appear in the list even before detecting specific audio elements
+  // Set initial volume (capped at 1.0)
+  currentVolume = Math.min(initialVolume !== undefined ? initialVolume : 1.0, 1.0);
+  
+  // Mark as initialized
+  isInitialized = true;
+  window._9gagVolumeHandlerActive = true;
+  
+  // Set up handlers
+  setupVideoObserver();
+  setupVideoEventListeners();
+  
+  // Apply initial volume after a short delay
+  setTimeout(applyVolumeToAllVideos, 200);
+  setTimeout(applyVolumeToAllVideos, 1000);
+  
+  // Notify that we're ready
   notifyHasAudio();
   
-  // Create a MutationObserver to detect when new audio/video elements are added
-  const gagObserver = new MutationObserver((mutations) => {
-    mutations.forEach((mutation) => {
+  console.log("[9GAG Handler] Initialization complete");
+  return true;
+}
+
+/**
+ * Set up event listeners for video play events
+ */
+function setupVideoEventListeners() {
+  // Catch videos when they start playing
+  document.addEventListener('play', function(event) {
+    if (event.target instanceof HTMLVideoElement) {
+      console.log("[9GAG Handler] Play event detected");
+      applyVolumeToVideo(event.target);
+      notifyHasAudio();
+    }
+  }, true);
+}
+
+/**
+ * Set up observer to watch for new video elements
+ */
+function setupVideoObserver() {
+  // Create a mutation observer to watch for added videos
+  observer = new MutationObserver(function(mutations) {
+    let videoFound = false;
+    
+    mutations.forEach(function(mutation) {
       if (mutation.addedNodes) {
-        mutation.addedNodes.forEach((node) => {
-          if (node.nodeName === 'AUDIO' || node.nodeName === 'VIDEO') {
-            handle9GAGMediaElement(node);
-            notifyHasAudio();
+        mutation.addedNodes.forEach(function(node) {
+          if (node instanceof HTMLVideoElement) {
+            videoFound = true;
+            applyVolumeToVideo(node);
           } else if (node.querySelectorAll) {
-            const mediaElements = node.querySelectorAll('audio, video');
-            if (mediaElements.length > 0) {
-              mediaElements.forEach(handle9GAGMediaElement);
-              notifyHasAudio();
+            // Look for videos in the added node
+            const videos = node.querySelectorAll('video');
+            if (videos.length > 0) {
+              videoFound = true;
+              videos.forEach(applyVolumeToVideo);
             }
           }
         });
       }
     });
-  });
-
-  // Start observing the document
-  gagObserver.observe(document.documentElement, {
-    childList: true,
-    subtree: true,
-    attributes: true,
-    attributeFilter: ['src']
-  });
-
-  // Find and handle any audio/video elements that already exist
-  document.querySelectorAll('audio, video').forEach(handle9GAGMediaElement);
-
-  // Special handling for 9GAG: Check for video posts even if they don't have active audio
-  check9GAGVideoPosts();
-  
-  // Listen for 9GAG's custom video player events
-  document.addEventListener('play', function(event) {
-    if (event.target instanceof HTMLMediaElement) {
-      if (!gagAudioElements.has(event.target)) {
-        handle9GAGMediaElement(event.target);
-        notifyHasAudio();
-      }
-    }
-  }, true);
-  
-  // Setup message listener
-  setup9GAGMessageListener();
-}
-
-// Special function to detect 9GAG video posts
-function check9GAGVideoPosts() {
-  // 9GAG video posts typically have these classes or elements
-  const videoContainers = document.querySelectorAll('.video-post, .post-video, video');
-  
-  if (videoContainers.length > 0) {
-    // Page has video elements, notify even if they're not currently playing
-    notifyHasAudio();
     
-    // Check again after a delay to catch dynamically loaded videos
-    setTimeout(check9GAGVideoPosts, 3000);
-  }
+    if (videoFound) {
+      notifyHasAudio();
+    }
+  });
+  
+  // Start observing the entire document
+  observer.observe(document.documentElement, {
+    childList: true,
+    subtree: true
+  });
 }
 
-// Handle 9GAG media elements specifically
-function handle9GAGMediaElement(element) {
-  if (gagAudioElements.has(element)) return; // Already handling this element
+/**
+ * Apply volume to a single video element
+ */
+function applyVolumeToVideo(video) {
+  if (!video || !(video instanceof HTMLVideoElement)) return;
   
-  gagAudioElements.add(element);
-  console.log('Volume control: Found 9GAG media element');
-  
-  // Apply current volume directly
-  apply9GAGVolumeToElement(element, gagCurrentVolume);
-  
-  // Notify background script that this tab has audio
-  notifyHasAudio();
-}
-
-// Apply volume directly to 9GAG element
-function apply9GAGVolumeToElement(element, volumeLevel) {
   try {
-    // Apply volume - for 9GAG we only use standard HTML5 volume 
-    // to prevent breaking their audio system
-    if (volumeLevel <= 1.0) {
-      element.volume = volumeLevel;
-    } else {
-      // For 9GAG, we cap at 100% to prevent audio breakage
-      element.volume = 1.0;
-    }
-  } catch (e) {
-    console.error('Volume control: Error setting 9GAG element volume:', e);
+    // Mark the video as handled by us
+    video._managed_by_9gag_handler = true;
+    
+    // Set volume directly
+    video.volume = currentVolume;
+    
+    console.log("[9GAG Handler] Volume set to", currentVolume, "on", video);
+  } catch (error) {
+    console.error("[9GAG Handler] Error setting volume:", error);
   }
 }
 
-// Set volume for 9GAG specifically - no amplification to prevent breakage
-function set9GAGVolume(volumeLevel) {
-  gagCurrentVolume = volumeLevel;
+/**
+ * Apply volume to all video elements on the page
+ */
+function applyVolumeToAllVideos() {
+  const videos = document.querySelectorAll('video');
+  console.log("[9GAG Handler] Found", videos.length, "videos");
   
-  // Notify the background script about the volume change
-  browser.runtime.sendMessage({
-    action: "volumeChanged",
-    volume: volumeLevel
-  });
-
-  // Apply to all elements - with caution for 9GAG
-  gagAudioElements.forEach(element => {
-    apply9GAGVolumeToElement(element, volumeLevel);
-  });
+  videos.forEach(applyVolumeToVideo);
   
-  // Log warning when user tries to amplify 9GAG audio
-  if (volumeLevel > 1.0) {
-    console.log('Volume control: 9GAG volume amplification limited to 100% to prevent audio issues');
-  }
+  // Return true if we found any videos
+  return videos.length > 0;
 }
 
-// Notify background script that this page has audio
+/**
+ * Set volume for all 9GAG videos (called from content script)
+ */
+function set9GagVolume(volume) {
+  // Cap at 100% (1.0)
+  currentVolume = Math.min(volume, 1.0);
+  
+  console.log("[9GAG Handler] Setting volume to", currentVolume);
+  
+  // Apply to all videos
+  const result = applyVolumeToAllVideos();
+  
+  // Try again after a short delay to catch any videos that might be loading
+  setTimeout(applyVolumeToAllVideos, 200);
+  
+  return result;
+}
+
+/**
+ * Notify content script that this page has audio
+ */
 function notifyHasAudio() {
-  browser.runtime.sendMessage({
-    action: "notifyAudio"
-  }).catch(() => {
-    // Ignore errors
-  });
+  window.postMessage({
+    source: "9gag-handler",
+    action: "notifyAudio",
+    hasActiveAudio: true
+  }, "*");
 }
 
-// Setup message listener for 9GAG-specific handling
-function setup9GAGMessageListener() {
-  browser.runtime.onMessage.addListener((message, sender, sendResponse) => {
-    if (message.action === "setVolume") {
-      set9GAGVolume(message.volume);
-      sendResponse({success: true});
-      return true;
-    } else if (message.action === "getVolume") {
-      sendResponse({volume: gagCurrentVolume});
-      return true;
-    } else if (message.action === "checkForAudio") {
-      // Always report that 9GAG has audio to ensure it appears in the list
-      sendResponse({hasAudio: true});
-      return true;
-    }
+/**
+ * Test function to check video volume levels
+ */
+function test9GagVolume() {
+  const videos = document.querySelectorAll('video');
+  console.log("[9GAG Handler] Found", videos.length, "videos for testing");
+  
+  videos.forEach(function(video, index) {
+    console.log(`[9GAG Handler] Video ${index} volume:`, video.volume);
   });
+  
+  return videos.length;
 }
-
-// Initialize immediately
-init9GAGVolumeControl();

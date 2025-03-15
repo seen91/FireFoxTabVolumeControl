@@ -7,6 +7,7 @@
 const SCAN_INTERVAL = 15000;   // Scan for audio tabs every 15 seconds
 const DETECTION_DELAY = 2000;  // Delay for audio detection after tab loads
 const VOLUME_APPLY_DELAY = 1500; // Delay for applying volume settings
+const INITIAL_SCAN_DELAY = 500; // Shorter delay for initial scan after popup opens
 
 // State
 // Note: In service workers, you must explicitly persist state,
@@ -54,6 +55,9 @@ async function initializeExtension() {
   
   // Set up periodic scanning
   createScanInterval();
+  
+  // Listen for popup connections to trigger immediate scans
+  browser.runtime.onConnect.addListener(handlePopupConnection);
 }
 
 /**
@@ -162,33 +166,34 @@ async function scanTabsForAudio() {
     const previousAudibleTabs = new Set(state.audibleTabs);
     let audioStatusChanged = false;
     
-    // Reset audible tabs
-    state.audibleTabs.clear();
+    // Track current tabs with audio for comparison
+    const currentAudibleTabs = new Set();
     
     for (const tab of tabs) {
       // Update audible status from browser
       if (tab.audible) {
-        state.audibleTabs.add(tab.id);
+        currentAudibleTabs.add(tab.id);
         state.tabAudioStatus[tab.id] = true;
         
-        // Notify if this is a newly audible tab
-        if (!previousAudibleTabs.has(tab.id)) {
+        // Notify if this is a newly audible tab or one that was previously audible
+        // but might have been removed from the popup
+        if (!state.audibleTabs.has(tab.id)) {
           notifyTabAudioStarted(tab.id);
           audioStatusChanged = true;
         }
-      } else if (previousAudibleTabs.has(tab.id)) {
-        // This tab was previously audible but is no longer
-        notifyTabAudioStopped(tab.id);
-        audioStatusChanged = true;
       }
       
-      // Try to detect audio elements
+      // Try to detect audio elements even if the tab is not currently audible
+      // This helps identify tabs that have audio capability but aren't playing
       tryDetectAudio(tab.id);
     }
     
+    // Update the audible tabs set
+    state.audibleTabs = currentAudibleTabs;
+    
     // Notify about tabs that stopped being audible
     for (const tabId of previousAudibleTabs) {
-      if (!state.audibleTabs.has(tabId)) {
+      if (!currentAudibleTabs.has(tabId)) {
         // Tab is no longer audible
         notifyTabAudioStopped(tabId);
         audioStatusChanged = true;
@@ -273,14 +278,30 @@ function tryDetectAudio(tabId) {
     // Special case for 9GAG
     if (is9GAGTab(tab)) {
       state.tabAudioStatus[tabId] = true;
+      
+      // If a tab was previously audible and now has audio content again
+      // make sure to notify the popup
+      if (tab.audible && !state.audibleTabs.has(tabId)) {
+        state.audibleTabs.add(tabId);
+        notifyTabAudioStarted(tabId);
+      }
       return;
     }
     
     // Normal detection for other sites
     browser.tabs.sendMessage(tabId, { action: "checkForAudio" })
       .then(response => {
+        const previouslyHadAudio = state.tabAudioStatus[tabId];
+        
         if (response && response.hasAudio) {
           state.tabAudioStatus[tabId] = true;
+          
+          // If the tab has audio elements and is audible, but wasn't previously tracked
+          // as audible, make sure to notify the popup
+          if (tab.audible && !state.audibleTabs.has(tabId)) {
+            state.audibleTabs.add(tabId);
+            notifyTabAudioStarted(tabId);
+          }
         }
       })
       .catch(() => {
@@ -322,10 +343,9 @@ async function handleTabUpdated(tabId, changeInfo, tab) {
       state.audibleTabs.add(tabId);
       state.tabAudioStatus[tabId] = true;
       
-      // Notify if this is a newly audible tab
-      if (!wasAudible) {
-        notifyTabAudioStarted(tabId);
-      }
+      // Always notify when a tab becomes audible
+      // This ensures that tabs that start playing again are added back to the popup
+      notifyTabAudioStarted(tabId);
     } else if (wasAudible) {
       state.audibleTabs.delete(tabId);
       
@@ -487,9 +507,15 @@ async function handleMessage(message, sender) {
     const tabId = sender.tab.id;
     state.tabAudioStatus[tabId] = true;
     
-    // If it's actively playing audio, add to audible tabs
+    // If it's actively playing audio, add to audible tabs and notify the popup
     if (message.hasActiveAudio) {
+      const wasAudible = state.audibleTabs.has(tabId);
       state.audibleTabs.add(tabId);
+      
+      // Notify the popup if this is a newly audible tab
+      if (!wasAudible) {
+        notifyTabAudioStarted(tabId);
+      }
     }
     
     // Save updated state
@@ -499,8 +525,40 @@ async function handleMessage(message, sender) {
   
   // Handle request to scan for audio tabs
   else if (message.action === "scanTabsForAudio") {
+    // Connect back to the popup to let it know when scan is complete
+    if (sender.id === browser.runtime.id && !sender.tab) {
+      // This is from our popup, establish a connection if possible
+      try {
+        const port = browser.runtime.connect({ name: "popup" });
+        port.onDisconnect.addListener(() => {
+          // Handle popup disconnect if needed
+        });
+      } catch (err) {
+        // Connection failed, popup might have closed already
+      }
+    }
+    
     await scanTabsForAudio();
     return { success: true };
+  }
+}
+
+/**
+ * Handle popup connection to trigger immediate audio scan
+ * @param {Port} port - The connection port
+ */
+function handlePopupConnection(port) {
+  if (port.name === "popup") {
+    // Run an immediate scan when popup connects
+    setTimeout(() => {
+      scanTabsForAudio().catch(error => {
+        console.error("Error during popup-triggered scan:", error);
+      });
+    }, INITIAL_SCAN_DELAY);
+    
+    port.onDisconnect.addListener(() => {
+      // Cleanup if needed when popup closes
+    });
   }
 }
 

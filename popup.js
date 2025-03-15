@@ -6,6 +6,8 @@ document.addEventListener('DOMContentLoaded', function() {
   const STATUS_MESSAGE_DURATION = 2000; // Duration for status messages in ms
   const AUDIO_DETECTION_TIMEOUT = 5000; // Timeout for detecting audio in a tab
   const UPDATE_DEBOUNCE_TIME = 300;  // Debounce time for updates in ms
+  const EMPTY_LIST_RETRY_DELAY = 1000; // Delay before retrying if list is empty
+  const MAX_RETRY_ATTEMPTS = 3;      // Maximum number of retry attempts
   
   // UI Elements
   const elements = {
@@ -35,7 +37,9 @@ document.addEventListener('DOMContentLoaded', function() {
     isPopupActive: true,
     pendingUpdates: new Set(), // Store pending tab updates
     pendingUpdateTimer: null,  // For debouncing updates
-    initialLoadComplete: false // Flag to track initial load
+    initialLoadComplete: false, // Flag to track initial load
+    loadRetryCount: 0,         // Counter for load retry attempts
+    loadRetryTimer: null       // Timer for retry attempts
   };
   
   // Initialize the popup
@@ -44,6 +48,11 @@ document.addEventListener('DOMContentLoaded', function() {
     setupMasterVolumeListeners();
     setupButtonListeners();
     setupAudioStatusListener();
+    
+    // Request an immediate scan for audio tabs
+    browser.runtime.sendMessage({ action: "scanTabsForAudio" }).catch(error => {
+      console.error('Error requesting tab scan:', error);
+    });
     
     // Load tabs on popup open
     loadTabs();
@@ -93,11 +102,18 @@ document.addEventListener('DOMContentLoaded', function() {
   function setupAudioStatusListener() {
     // Set up message listener for tab audio status changes
     state.audioStatusListener = browser.runtime.onMessage.addListener((message) => {
-      if (!state.isPopupActive || !state.initialLoadComplete) return;
+      if (!state.isPopupActive) return;
       
       // Handle tab audio started
       if (message.action === "tabAudioStarted" && message.tabId) {
+        // Always queue the tab for adding regardless of initialLoadComplete state
         queueTabUpdate(message.tabId, 'add');
+        
+        // If initial load didn't find any tabs, refresh the full list
+        if (state.currentTabs.length === 0 && state.initialLoadComplete) {
+          console.log("Audio detected but tab list is empty. Refreshing tab list.");
+          refreshTabList();
+        }
       }
       
       // Handle tab audio stopped
@@ -111,9 +127,15 @@ document.addEventListener('DOMContentLoaded', function() {
       }
       
       // Handle tab audio list update (reduce frequency by ignoring if we have pending updates)
-      if (message.action === "tabAudioListUpdated" && state.pendingUpdates.size === 0) {
-        // We'll only do incremental updates, not full reloads
-        processPendingUpdates();
+      if (message.action === "tabAudioListUpdated") {
+        // If we have no tabs and initial load is complete, try refreshing
+        if (state.currentTabs.length === 0 && state.initialLoadComplete) {
+          console.log("Audio list updated but tab list is empty. Refreshing tab list.");
+          refreshTabList();
+        } else if (state.pendingUpdates.size === 0) {
+          // We'll only do incremental updates, not full reloads
+          processPendingUpdates();
+        }
       }
     });
   }
@@ -165,7 +187,7 @@ document.addEventListener('DOMContentLoaded', function() {
       handleTabAudioStopped(update.tabId);
     }
     
-    // Handle additions
+    // Handle additions - always process these, regardless of current state
     if (additions.length > 0) {
       Promise.all(additions.map(update => 
         handleTabAudioStartedAsync(update.tabId)
@@ -179,29 +201,56 @@ document.addEventListener('DOMContentLoaded', function() {
   async function handleTabAudioStartedAsync(tabId) {
     // Check if this tab is already in our list
     const tabExists = state.currentTabs.some(tab => tab.id === tabId);
-    if (tabExists) return;
     
+    // Always proceed with fetching info, even if the tab exists
+    // This ensures we get updated audio status
     try {
       // Get tab info
       const tab = await browser.tabs.get(tabId);
       const tabInfo = await getTabVolumeInfo(tab);
       
-      // Only add if it actually has audio
+      // Only add if it actually has audio and isn't already in our list
       if (tabInfo.hasAudio) {
-        state.currentTabs.push(tabInfo);
-        createTabUI(tabInfo);
-        
-        // Update no tabs message
-        elements.noTabsMessage.style.display = 'none';
-        
-        // Auto-expand if needed
-        if (state.currentTabs.length <= AUTO_EXPAND_THRESHOLD) {
-          const header = document.querySelector(`.tab-item[data-tab-id="${tabId}"] .tab-header`);
-          if (header) header.click();
+        if (!tabExists) {
+          state.currentTabs.push(tabInfo);
+          createTabUI(tabInfo);
+          
+          // Update no tabs message
+          elements.noTabsMessage.style.display = 'none';
+          
+          // Auto-expand if needed
+          if (state.currentTabs.length <= AUTO_EXPAND_THRESHOLD) {
+            const header = document.querySelector(`.tab-item[data-tab-id="${tabId}"] .tab-header`);
+            if (header) header.click();
+          }
+        } else {
+          // Update the existing tab info and UI if needed
+          updateTabInfo(tabInfo);
         }
       }
     } catch (error) {
       console.error(`Error adding new audio tab ${tabId}:`, error);
+    }
+  }
+  
+  // Update an existing tab's info
+  function updateTabInfo(tabInfo) {
+    // Find the tab in our list
+    const index = state.currentTabs.findIndex(tab => tab.id === tabInfo.id);
+    if (index !== -1) {
+      // Update our stored tab info
+      state.currentTabs[index] = tabInfo;
+      
+      // Update the UI if needed (title, favicon, etc.)
+      updateTabTitle(tabInfo.id, tabInfo.title);
+      
+      // If it's a tab that was previously removed from the UI but still in state,
+      // make sure it's visible in the UI
+      const tabElement = document.querySelector(`.tab-item[data-tab-id="${tabInfo.id}"]`);
+      if (!tabElement) {
+        createTabUI(tabInfo);
+        elements.noTabsMessage.style.display = 'none';
+      }
     }
   }
   
@@ -312,6 +361,12 @@ document.addEventListener('DOMContentLoaded', function() {
     }
     state.pendingUpdates.clear();
     
+    // Clear retry timer if it exists
+    if (state.loadRetryTimer) {
+      clearTimeout(state.loadRetryTimer);
+      state.loadRetryTimer = null;
+    }
+    
     // Clear current tabs
     state.currentTabs = [];
     elements.tabsContainer.innerHTML = '';
@@ -354,6 +409,15 @@ document.addEventListener('DOMContentLoaded', function() {
         if (audioTabs.length === 0) {
           // No audio tabs found
           elements.noTabsMessage.style.display = 'block';
+          
+          // Schedule a retry if this is the initial load and we haven't exceeded max retries
+          if (state.loadRetryCount < MAX_RETRY_ATTEMPTS) {
+            state.loadRetryCount++;
+            state.loadRetryTimer = setTimeout(() => {
+              console.log(`No audio tabs found. Retry attempt ${state.loadRetryCount}...`);
+              loadTabs();
+            }, EMPTY_LIST_RETRY_DELAY);
+          }
         } else {
           // Create UI for each audio tab
           elements.noTabsMessage.style.display = 'none';
@@ -365,6 +429,9 @@ document.addEventListener('DOMContentLoaded', function() {
               header.click();
             });
           }
+          
+          // Reset retry count as we found tabs
+          state.loadRetryCount = 0;
         }
       }
       
@@ -374,6 +441,15 @@ document.addEventListener('DOMContentLoaded', function() {
       console.error('Error loading tabs:', error);
       showStatus('Error loading tabs');
       state.initialLoadComplete = true; // Still mark as loaded to enable updates
+      
+      // If error occurred and we haven't exceeded max retries, try again
+      if (state.loadRetryCount < MAX_RETRY_ATTEMPTS) {
+        state.loadRetryCount++;
+        state.loadRetryTimer = setTimeout(() => {
+          console.log(`Error loading tabs. Retry attempt ${state.loadRetryCount}...`);
+          loadTabs();
+        }, EMPTY_LIST_RETRY_DELAY);
+      }
     }
   }
   

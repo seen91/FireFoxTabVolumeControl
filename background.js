@@ -337,6 +337,14 @@ async function handleTabUpdated(tabId, changeInfo, tab) {
     await saveState();
   }
   
+  // Add notification for title changes if the tab has audio status or is audible
+  if (changeInfo.title) {
+    // Send title updates for any tab that either has audio or is marked as having audio capabilities
+    if (state.audibleTabs.has(tabId) || state.tabAudioStatus[tabId] || tab.audible) {
+      notifyTabTitleChanged(tabId, changeInfo.title);
+    }
+  }
+  
   if (changeInfo.status === 'complete' && tab.url) {
     // Check for domain-specific volume setting
     const domain = getDomainFromUrl(tab.url);
@@ -349,6 +357,21 @@ async function handleTabUpdated(tabId, changeInfo, tab) {
       tryDetectAudio(tabId);
     }, DETECTION_DELAY);
   }
+}
+
+/**
+ * Notify that a tab's title has changed
+ * @param {number} tabId - ID of the tab
+ * @param {string} title - New title
+ */
+function notifyTabTitleChanged(tabId, title) {
+  browser.runtime.sendMessage({
+    action: "tabTitleChanged",
+    tabId: tabId,
+    title: title
+  }).catch(() => {
+    // Popup might not be open, which is fine
+  });
 }
 
 /**

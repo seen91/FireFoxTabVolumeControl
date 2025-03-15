@@ -58,9 +58,35 @@ document.addEventListener('DOMContentLoaded', function() {
     
     // Refresh tabs when popup becomes visible again
     if (state.isPopupActive) {
-      // Only do a full reload if we've been hidden for a while
-      loadTabs();
+      // Update tab titles for existing tabs before doing a full reload
+      updateAllTabTitles().then(() => {
+        // Only do a full reload if we've been hidden for a while
+        loadTabs();
+      }).catch(error => {
+        console.error('Error updating tab titles:', error);
+        // Fall back to full reload
+        loadTabs();
+      });
     }
+  }
+  
+  // Update titles for all current tabs from the browser
+  async function updateAllTabTitles() {
+    if (state.currentTabs.length === 0) return;
+    
+    // Get fresh info for all tabs
+    const tabPromises = state.currentTabs.map(tab => 
+      browser.tabs.get(tab.id).catch(() => null)  // Return null if tab doesn't exist anymore
+    );
+    
+    const updatedTabs = await Promise.all(tabPromises);
+    
+    // Update titles for tabs that still exist
+    updatedTabs.forEach(updatedTab => {
+      if (updatedTab && updatedTab.title) {
+        updateTabTitle(updatedTab.id, updatedTab.title);
+      }
+    });
   }
   
   // Set up listener for audio status changes
@@ -79,6 +105,11 @@ document.addEventListener('DOMContentLoaded', function() {
         queueTabUpdate(message.tabId, 'remove');
       }
       
+      // Handle tab title changed
+      if (message.action === "tabTitleChanged" && message.tabId && message.title) {
+        updateTabTitle(message.tabId, message.title);
+      }
+      
       // Handle tab audio list update (reduce frequency by ignoring if we have pending updates)
       if (message.action === "tabAudioListUpdated" && state.pendingUpdates.size === 0) {
         // We'll only do incremental updates, not full reloads
@@ -87,6 +118,22 @@ document.addEventListener('DOMContentLoaded', function() {
     });
   }
   
+  // Update tab title in the UI
+  function updateTabTitle(tabId, newTitle) {
+    // Find the tab in our current tabs list
+    const tabIndex = state.currentTabs.findIndex(tab => tab.id === tabId);
+    if (tabIndex !== -1) {
+      state.currentTabs[tabIndex].title = newTitle;
+    }
+    
+    // Update the UI
+    const tabTitleElement = document.querySelector(`.tab-item[data-tab-id="${tabId}"] .tab-title`);
+    if (tabTitleElement) {
+      tabTitleElement.textContent = newTitle;
+      tabTitleElement.title = newTitle;
+    }
+  }
+
   // Queue a tab update to avoid multiple rapid UI changes
   function queueTabUpdate(tabId, action) {
     // Store the action with the tab ID
@@ -202,8 +249,15 @@ document.addEventListener('DOMContentLoaded', function() {
     }
     state.pendingUpdates.clear();
     
+    // Clear current tabs first
+    state.currentTabs = [];
+    elements.tabsContainer.innerHTML = '';
+    
     // Reset the state and load tabs again
     await loadTabs();
+    
+    // Show a status message
+    showStatus("Tab list refreshed with latest information");
   }
   
   // Set up master volume control listeners
@@ -227,7 +281,7 @@ document.addEventListener('DOMContentLoaded', function() {
   function setupButtonListeners() {
     // Refresh tabs button
     elements.refreshButton.addEventListener('click', function() {
-      loadTabs();
+      refreshTabList(); // Changed from loadTabs() to use our enhanced refresh function
       showStatus('Tab list refreshed');
     });
     
@@ -258,11 +312,12 @@ document.addEventListener('DOMContentLoaded', function() {
     }
     state.pendingUpdates.clear();
     
-    elements.tabsContainer.innerHTML = '';
+    // Clear current tabs
     state.currentTabs = [];
+    elements.tabsContainer.innerHTML = '';
     
+    // First get all tabs
     try {
-      // First get all tabs
       const allTabs = await browser.tabs.query({});
       
       // Request an immediate scan for audio tabs
@@ -272,8 +327,6 @@ document.addEventListener('DOMContentLoaded', function() {
       const audioStatusResponse = await browser.runtime.sendMessage({
         action: "getTabAudioStatus"
       });
-      
-      // Get the tab IDs that have audio
       const tabAudioStatus = audioStatusResponse.tabAudioStatus || {};
       
       // If a browser-reported audible tab doesn't have a volume yet,
@@ -345,35 +398,53 @@ document.addEventListener('DOMContentLoaded', function() {
   // Get volume information for a tab - returns a Promise
   function getTabVolumeInfo(tab) {
     return new Promise(resolve => {
-      // Special case for 9GAG - always treat as having audio
-      if (tab.url && tab.url.includes('9gag.com')) {
-        tab.hasAudio = true;
-        tab.volume = 1.0; // Default volume
-        state.tabVolumes[tab.id] = 1.0;
-        resolve(tab);
-        return;
-      }
-      
-      // Regular flow for other tabs
-      browser.tabs.sendMessage(tab.id, { action: "getVolume" })
-        .then(response => {
-          if (response && response.volume !== undefined) {
-            // Tab has volume control
-            tab.volume = response.volume;
-            tab.hasAudio = true;
-            state.tabVolumes[tab.id] = response.volume;
-            resolve(tab);
-          } else {
-            // Tab doesn't have volume control or couldn't get it
+      // Always get the most current tab information first
+      browser.tabs.get(tab.id).then(updatedTab => {
+        // Use the most up-to-date tab info (especially the title)
+        tab = updatedTab;
+        
+        // Special case for 9GAG - always treat as having audio
+        if (tab.url && tab.url.includes('9gag.com')) {
+          tab.hasAudio = true;
+          tab.volume = 1.0; // Default volume
+          state.tabVolumes[tab.id] = 1.0;
+          resolve(tab);
+          return;
+        }
+        
+        // Regular flow for other tabs
+        browser.tabs.sendMessage(tab.id, { action: "getVolume" })
+          .then(response => {
+            if (response && response.volume !== undefined) {
+              // Tab has volume control
+              tab.volume = response.volume;
+              tab.hasAudio = true;
+              state.tabVolumes[tab.id] = response.volume;
+              resolve(tab);
+            } else {
+              // Tab doesn't have volume control or couldn't get it
+              tab.hasAudio = false;
+              resolve(tab);
+            }
+          })
+          .catch(() => {
+            // Error fetching volume, tab probably doesn't have audio
             tab.hasAudio = false;
             resolve(tab);
-          }
-        })
-        .catch(() => {
-          // Error fetching volume, tab probably doesn't have audio
+          });
+      }).catch(() => {
+        // If we can't get the updated tab info, proceed with what we have
+        // Special case for 9GAG - always treat as having audio
+        if (tab.url && tab.url.includes('9gag.com')) {
+          tab.hasAudio = true;
+          tab.volume = 1.0; // Default volume
+          state.tabVolumes[tab.id] = 1.0;
+        } else {
+          // For other tabs, mark as not having audio if we can't verify
           tab.hasAudio = false;
-          resolve(tab);
-        });
+        }
+        resolve(tab);
+      });
     });
   }
   
@@ -545,7 +616,6 @@ document.addEventListener('DOMContentLoaded', function() {
   // Helper to update badge style based on volume level
   function updateBadgeStyle(element, volumePercent) {
     element.classList.remove('muted-badge', 'amplified-badge');
-    
     if (volumePercent === 0) {
       element.classList.add('muted-badge');
     } else if (volumePercent > 100) {
@@ -645,8 +715,6 @@ document.addEventListener('DOMContentLoaded', function() {
       applyVolumeToTab(tab.id, DEFAULT_VOLUME);
       state.tabVolumes[tab.id] = DEFAULT_VOLUME;
     });
-    
-    // Reload tabs to update UI
     loadTabs();
   }
   
@@ -658,7 +726,6 @@ document.addEventListener('DOMContentLoaded', function() {
     if (state.pendingUpdateTimer) {
       clearTimeout(state.pendingUpdateTimer);
     }
-    
     if (state.audioStatusListener) {
       browser.runtime.onMessage.removeListener(state.audioStatusListener);
     }

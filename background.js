@@ -130,16 +130,24 @@ function getDomainFromUrl(url) {
  * Create interval for scanning tabs
  */
 function createScanInterval() {
-  // Service workers don't support setInterval directly
-  // Use an alarm instead
-  browser.alarms.create('scanTabs', {
-    periodInMinutes: SCAN_INTERVAL / 60000
-  });
+  // Use setTimeout for periodic scanning instead of alarms
+  function scheduleNextScan() {
+    setTimeout(() => {
+      scanTabsForAudio().then(() => {
+        scheduleNextScan();
+      }).catch(error => {
+        console.error("Error during tab scan:", error);
+        scheduleNextScan(); // Still schedule next scan even if there was an error
+      });
+    }, SCAN_INTERVAL);
+  }
   
-  browser.alarms.onAlarm.addListener((alarm) => {
-    if (alarm.name === 'scanTabs') {
-      scanTabsForAudio();
-    }
+  // Start the first scan
+  scheduleNextScan();
+  
+  // Also do an immediate scan
+  scanTabsForAudio().catch(error => {
+    console.error("Error during initial tab scan:", error);
   });
 }
 

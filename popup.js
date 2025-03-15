@@ -5,6 +5,7 @@ document.addEventListener('DOMContentLoaded', function() {
   const DEFAULT_VOLUME = 1.0;      // Default volume (100%)
   const STATUS_MESSAGE_DURATION = 2000; // Duration for status messages in ms
   const AUDIO_DETECTION_TIMEOUT = 5000; // Timeout for detecting audio in a tab
+  const UPDATE_DEBOUNCE_TIME = 300;  // Debounce time for updates in ms
   
   // UI Elements
   const elements = {
@@ -29,7 +30,12 @@ document.addEventListener('DOMContentLoaded', function() {
   // Data
   const state = {
     currentTabs: [],
-    tabVolumes: {} // Store volume values by tab ID
+    tabVolumes: {}, // Store volume values by tab ID
+    audioStatusListener: null,
+    isPopupActive: true,
+    pendingUpdates: new Set(), // Store pending tab updates
+    pendingUpdateTimer: null,  // For debouncing updates
+    initialLoadComplete: false // Flag to track initial load
   };
   
   // Initialize the popup
@@ -37,9 +43,167 @@ document.addEventListener('DOMContentLoaded', function() {
     // Set up event listeners
     setupMasterVolumeListeners();
     setupButtonListeners();
+    setupAudioStatusListener();
     
     // Load tabs on popup open
     loadTabs();
+    
+    // Add visibility change listener to handle popup being hidden/shown
+    document.addEventListener('visibilitychange', handleVisibilityChange);
+  }
+  
+  // Handle visibility change for the popup
+  function handleVisibilityChange() {
+    state.isPopupActive = document.visibilityState === 'visible';
+    
+    // Refresh tabs when popup becomes visible again
+    if (state.isPopupActive) {
+      // Only do a full reload if we've been hidden for a while
+      loadTabs();
+    }
+  }
+  
+  // Set up listener for audio status changes
+  function setupAudioStatusListener() {
+    // Set up message listener for tab audio status changes
+    state.audioStatusListener = browser.runtime.onMessage.addListener((message) => {
+      if (!state.isPopupActive || !state.initialLoadComplete) return;
+      
+      // Handle tab audio started
+      if (message.action === "tabAudioStarted" && message.tabId) {
+        queueTabUpdate(message.tabId, 'add');
+      }
+      
+      // Handle tab audio stopped
+      if (message.action === "tabAudioStopped" && message.tabId) {
+        queueTabUpdate(message.tabId, 'remove');
+      }
+      
+      // Handle tab audio list update (reduce frequency by ignoring if we have pending updates)
+      if (message.action === "tabAudioListUpdated" && state.pendingUpdates.size === 0) {
+        // We'll only do incremental updates, not full reloads
+        processPendingUpdates();
+      }
+    });
+  }
+  
+  // Queue a tab update to avoid multiple rapid UI changes
+  function queueTabUpdate(tabId, action) {
+    // Store the action with the tab ID
+    state.pendingUpdates.add({ tabId, action });
+    
+    // Debounce the updates
+    if (state.pendingUpdateTimer) {
+      clearTimeout(state.pendingUpdateTimer);
+    }
+    
+    state.pendingUpdateTimer = setTimeout(() => {
+      processPendingUpdates();
+    }, UPDATE_DEBOUNCE_TIME);
+  }
+  
+  // Process all pending tab updates
+  function processPendingUpdates() {
+    if (state.pendingUpdates.size === 0) return;
+    
+    const updates = [...state.pendingUpdates];
+    state.pendingUpdates.clear();
+    
+    // Process removals first to avoid flickering
+    const removals = updates.filter(update => update.action === 'remove');
+    const additions = updates.filter(update => update.action === 'add');
+    
+    // Handle removals
+    for (const update of removals) {
+      handleTabAudioStopped(update.tabId);
+    }
+    
+    // Handle additions
+    if (additions.length > 0) {
+      Promise.all(additions.map(update => 
+        handleTabAudioStartedAsync(update.tabId)
+      )).catch(error => {
+        console.error('Error processing tab additions:', error);
+      });
+    }
+  }
+  
+  // Handle when a tab starts playing audio, returning a Promise
+  async function handleTabAudioStartedAsync(tabId) {
+    // Check if this tab is already in our list
+    const tabExists = state.currentTabs.some(tab => tab.id === tabId);
+    if (tabExists) return;
+    
+    try {
+      // Get tab info
+      const tab = await browser.tabs.get(tabId);
+      const tabInfo = await getTabVolumeInfo(tab);
+      
+      // Only add if it actually has audio
+      if (tabInfo.hasAudio) {
+        state.currentTabs.push(tabInfo);
+        createTabUI(tabInfo);
+        
+        // Update no tabs message
+        elements.noTabsMessage.style.display = 'none';
+        
+        // Auto-expand if needed
+        if (state.currentTabs.length <= AUTO_EXPAND_THRESHOLD) {
+          const header = document.querySelector(`.tab-item[data-tab-id="${tabId}"] .tab-header`);
+          if (header) header.click();
+        }
+      }
+    } catch (error) {
+      console.error(`Error adding new audio tab ${tabId}:`, error);
+    }
+  }
+  
+  // Handle when a tab starts playing audio (non-async version)
+  function handleTabAudioStarted(tabId) {
+    handleTabAudioStartedAsync(tabId).catch(error => {
+      console.error(`Error handling tab audio start for ${tabId}:`, error);
+    });
+  }
+  
+  // Handle when a tab stops playing audio
+  function handleTabAudioStopped(tabId) {
+    // Find the tab in our list
+    const tabIndex = state.currentTabs.findIndex(tab => tab.id === tabId);
+    if (tabIndex === -1) return;
+    
+    // Remove the tab from our state
+    state.currentTabs.splice(tabIndex, 1);
+    
+    // Remove the tab UI - use smooth fade
+    const tabElement = document.querySelector(`.tab-item[data-tab-id="${tabId}"]`);
+    if (tabElement) {
+      tabElement.style.transition = 'opacity 0.3s ease-out';
+      tabElement.style.opacity = '0';
+      
+      setTimeout(() => {
+        if (tabElement.parentNode) {
+          tabElement.parentNode.removeChild(tabElement);
+        }
+        
+        // Show no tabs message if needed
+        if (state.currentTabs.length === 0) {
+          elements.noTabsMessage.style.display = 'block';
+        }
+      }, 300); // Match transition time
+    }
+  }
+  
+  // Refresh the tab list completely, but only when explicitly requested
+  async function refreshTabList() {
+    // Cancel any pending updates
+    if (state.pendingUpdateTimer) {
+      clearTimeout(state.pendingUpdateTimer);
+      state.pendingUpdateTimer = null;
+    }
+    state.pendingUpdates.clear();
+    
+    // Reset the state and load tabs again
+    await loadTabs();
   }
   
   // Set up master volume control listeners
@@ -84,12 +248,25 @@ document.addEventListener('DOMContentLoaded', function() {
   
   // Get all tabs and filter for audio tabs
   async function loadTabs() {
+    // Mark as not loaded during refresh
+    state.initialLoadComplete = false;
+    
+    // Clear existing timer and pending updates
+    if (state.pendingUpdateTimer) {
+      clearTimeout(state.pendingUpdateTimer);
+      state.pendingUpdateTimer = null;
+    }
+    state.pendingUpdates.clear();
+    
     elements.tabsContainer.innerHTML = '';
     state.currentTabs = [];
     
     try {
       // First get all tabs
       const allTabs = await browser.tabs.query({});
+      
+      // Request an immediate scan for audio tabs
+      await browser.runtime.sendMessage({ action: "scanTabsForAudio" });
       
       // Then get audio status info from the background script
       const audioStatusResponse = await browser.runtime.sendMessage({
@@ -113,72 +290,102 @@ document.addEventListener('DOMContentLoaded', function() {
       
       // Filter to tabs that actually have audio
       const audioTabs = resolvedTabs.filter(tab => tab.hasAudio);
-      state.currentTabs = audioTabs;
       
-      if (audioTabs.length === 0) {
-        // No audio tabs found
-        elements.noTabsMessage.style.display = 'block';
-      } else {
-        // Create UI for each audio tab
-        elements.noTabsMessage.style.display = 'none';
-        audioTabs.forEach(createTabUI);
+      // Save tabs and rebuild UI only if the list actually changed
+      const needsRebuild = !tabListsEqual(state.currentTabs, audioTabs);
+      
+      if (needsRebuild) {
+        elements.tabsContainer.innerHTML = '';
+        state.currentTabs = audioTabs;
         
-        // Auto-expand tabs if there are few of them
-        if (audioTabs.length <= AUTO_EXPAND_THRESHOLD) {
-          document.querySelectorAll('.tab-header').forEach(header => {
-            header.click();
-          });
+        if (audioTabs.length === 0) {
+          // No audio tabs found
+          elements.noTabsMessage.style.display = 'block';
+        } else {
+          // Create UI for each audio tab
+          elements.noTabsMessage.style.display = 'none';
+          audioTabs.forEach(createTabUI);
+          
+          // Auto-expand tabs if there are few of them
+          if (audioTabs.length <= AUTO_EXPAND_THRESHOLD) {
+            document.querySelectorAll('.tab-header').forEach(header => {
+              header.click();
+            });
+          }
         }
       }
+      
+      // Mark as loaded
+      state.initialLoadComplete = true;
     } catch (error) {
       console.error('Error loading tabs:', error);
       showStatus('Error loading tabs');
+      state.initialLoadComplete = true; // Still mark as loaded to enable updates
     }
   }
   
-  // Get volume information for a tab - returns a Promise
-function getTabVolumeInfo(tab) {
-  return new Promise(resolve => {
-    // Special case for 9GAG - always treat as having audio
-    if (tab.url && tab.url.includes('9gag.com')) {
-      tab.hasAudio = true;
-      tab.volume = 1.0; // Default volume
-      state.tabVolumes[tab.id] = 1.0;
-      resolve(tab);
-      return;
+  // Compare two tab lists to see if they're equal (by id)
+  function tabListsEqual(list1, list2) {
+    if (list1.length !== list2.length) return false;
+    
+    // Convert both lists to sets of tab IDs and compare
+    const ids1 = new Set(list1.map(tab => tab.id));
+    const ids2 = new Set(list2.map(tab => tab.id));
+    
+    if (ids1.size !== ids2.size) return false;
+    
+    // Check if all IDs in ids1 are also in ids2
+    for (const id of ids1) {
+      if (!ids2.has(id)) return false;
     }
     
-    // Regular flow for other tabs
-    browser.tabs.sendMessage(tab.id, { action: "getVolume" })
-      .then(response => {
-        if (response && response.volume !== undefined) {
-          // Tab has volume control
-          tab.volume = response.volume;
-          tab.hasAudio = true;
-          state.tabVolumes[tab.id] = response.volume;
-          resolve(tab);
-        } else {
-          // Tab doesn't have volume control or couldn't get it
+    return true;
+  }
+  
+  // Get volume information for a tab - returns a Promise
+  function getTabVolumeInfo(tab) {
+    return new Promise(resolve => {
+      // Special case for 9GAG - always treat as having audio
+      if (tab.url && tab.url.includes('9gag.com')) {
+        tab.hasAudio = true;
+        tab.volume = 1.0; // Default volume
+        state.tabVolumes[tab.id] = 1.0;
+        resolve(tab);
+        return;
+      }
+      
+      // Regular flow for other tabs
+      browser.tabs.sendMessage(tab.id, { action: "getVolume" })
+        .then(response => {
+          if (response && response.volume !== undefined) {
+            // Tab has volume control
+            tab.volume = response.volume;
+            tab.hasAudio = true;
+            state.tabVolumes[tab.id] = response.volume;
+            resolve(tab);
+          } else {
+            // Tab doesn't have volume control or couldn't get it
+            tab.hasAudio = false;
+            resolve(tab);
+          }
+        })
+        .catch(() => {
+          // Error fetching volume, tab probably doesn't have audio
           tab.hasAudio = false;
           resolve(tab);
-        }
-      })
-      .catch(() => {
-        // Error fetching volume, tab probably doesn't have audio
-        tab.hasAudio = false;
-        resolve(tab);
-      });
-  });
-}
+        });
+    });
+  }
   
   // Create UI for a single tab
   function createTabUI(tab) {
     const volumePercent = Math.round(tab.volume * 100);
     
-    // Create tab container
+    // Create tab container with fade-in effect
     const tabItem = document.createElement('div');
     tabItem.className = 'tab-item';
     tabItem.dataset.tabId = tab.id;
+    tabItem.style.opacity = '0';
     
     // Create header
     const tabHeader = createTabHeader(tab, volumePercent);
@@ -192,6 +399,12 @@ function getTabVolumeInfo(tab) {
     
     // Add to container
     elements.tabsContainer.appendChild(tabItem);
+    
+    // Trigger reflow and fade in
+    setTimeout(() => {
+      tabItem.style.transition = 'opacity 0.3s ease-in';
+      tabItem.style.opacity = '1';
+    }, 10);
   }
   
   // Create tab header with favicon, title, and volume badge
@@ -439,4 +652,16 @@ function getTabVolumeInfo(tab) {
   
   // Start the application
   initialize();
+  
+  // Clean up event listeners when the popup is closed
+  window.addEventListener('unload', () => {
+    if (state.pendingUpdateTimer) {
+      clearTimeout(state.pendingUpdateTimer);
+    }
+    
+    if (state.audioStatusListener) {
+      browser.runtime.onMessage.removeListener(state.audioStatusListener);
+    }
+    document.removeEventListener('visibilitychange', handleVisibilityChange);
+  });
 });

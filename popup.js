@@ -39,7 +39,8 @@ document.addEventListener('DOMContentLoaded', function() {
     pendingUpdateTimer: null,  // For debouncing updates
     initialLoadComplete: false, // Flag to track initial load
     loadRetryCount: 0,         // Counter for load retry attempts
-    loadRetryTimer: null       // Timer for retry attempts
+    loadRetryTimer: null,      // Timer for retry attempts
+    activeTabId: null          // Store the ID of the active tab
   };
   
   // Initialize the popup
@@ -48,6 +49,18 @@ document.addEventListener('DOMContentLoaded', function() {
     setupMasterVolumeListeners();
     setupButtonListeners();
     setupAudioStatusListener();
+    
+    // Get the current active tab
+    browser.tabs.query({active: true, currentWindow: true})
+      .then(tabs => {
+        if (tabs && tabs.length > 0) {
+          state.activeTabId = tabs[0].id;
+          console.log('Active tab detected:', state.activeTabId);
+        }
+      })
+      .catch(error => {
+        console.error('Error getting active tab:', error);
+      });
     
     // Request an immediate scan for audio tabs
     browser.runtime.sendMessage({ action: "scanTabsForAudio" }).catch(error => {
@@ -119,6 +132,15 @@ document.addEventListener('DOMContentLoaded', function() {
       // Handle tab audio stopped
       if (message.action === "tabAudioStopped" && message.tabId) {
         queueTabUpdate(message.tabId, 'remove');
+      }
+      
+      // Handle active tab changed
+      if (message.action === "activeTabChanged" && message.tabId) {
+        state.activeTabId = message.tabId;
+        console.log("Active tab changed to:", message.tabId);
+        
+        // Try to add this tab to the list if it's not already there
+        handleTabActive(message.tabId);
       }
       
       // Handle tab title changed
@@ -263,6 +285,12 @@ document.addEventListener('DOMContentLoaded', function() {
   
   // Handle when a tab stops playing audio
   function handleTabAudioStopped(tabId) {
+    // If this is the active tab, don't remove it
+    if (tabId === state.activeTabId) {
+      console.log(`Tab ${tabId} is the active tab - keeping it in the list even though audio stopped`);
+      return;
+    }
+    
     // Find the tab in our list
     const tabIndex = state.currentTabs.findIndex(tab => tab.id === tabId);
     if (tabIndex === -1) return;
@@ -792,6 +820,40 @@ document.addEventListener('DOMContentLoaded', function() {
       state.tabVolumes[tab.id] = DEFAULT_VOLUME;
     });
     loadTabs();
+  }
+  
+  /**
+   * Handle when the active tab is detected
+   * @param {number} tabId - ID of the active tab
+   */
+  async function handleTabActive(tabId) {
+    // Check if the active tab is already in our list
+    const tabExists = state.currentTabs.some(tab => tab.id === tabId);
+    if (tabExists) return; // Tab is already in the list, nothing to do
+
+    try {
+      // Get the tab info and add it to our list
+      const tab = await browser.tabs.get(tabId);
+      
+      // We'll always try to add the active tab, even if it doesn't have audio yet
+      // This ensures the current tab is always in the list
+      tab.hasAudio = true; // Force it to be treated as having audio
+      tab.volume = DEFAULT_VOLUME; // Set default volume
+      state.tabVolumes[tabId] = DEFAULT_VOLUME;
+      
+      // Add the tab to our list and create UI for it
+      state.currentTabs.push(tab);
+      createTabUI(tab);
+      
+      // Update no tabs message
+      if (state.currentTabs.length > 0) {
+        elements.noTabsMessage.style.display = 'none';
+      }
+
+      console.log(`Active tab ${tabId} added to the list`);
+    } catch (error) {
+      console.error(`Error adding active tab ${tabId}:`, error);
+    }
   }
   
   // Start the application

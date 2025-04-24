@@ -17,7 +17,8 @@ let state = {
   domainVolumes: {},    // Volume settings per domain
   tabAudioStatus: {},   // Which tabs have audio
   tabMediaStatus: {},   // Tabs with media elements (but might not be playing)
-  audibleTabs: new Set() // Set of tabs that are currently audible
+  audibleTabs: new Set(), // Set of tabs that are currently audible
+  activeTabId: null     // Track the currently active tab
 };
 
 // Convert Set to array for serialization
@@ -34,7 +35,8 @@ function restoreState(savedState) {
   
   state = {
     ...savedState,
-    audibleTabs: new Set(savedState.audibleTabs || [])
+    audibleTabs: new Set(savedState.audibleTabs || []),
+    activeTabId: savedState.activeTabId || null
   };
 }
 
@@ -50,6 +52,17 @@ async function initializeExtension() {
   // Load settings
   await loadSettings();
   
+  // Get current active tab
+  try {
+    const tabs = await browser.tabs.query({ active: true, currentWindow: true });
+    if (tabs.length > 0) {
+      state.activeTabId = tabs[0].id;
+      console.log("Tab Volume Control: Active tab detected:", state.activeTabId);
+    }
+  } catch (error) {
+    console.error("Tab Volume Control: Error getting active tab", error);
+  }
+  
   // Initial scan for tabs with audio
   await scanTabsForAudio();
   
@@ -58,6 +71,9 @@ async function initializeExtension() {
   
   // Listen for popup connections to trigger immediate scans
   browser.runtime.onConnect.addListener(handlePopupConnection);
+  
+  // Set up tab activated listener to track active tab
+  browser.tabs.onActivated.addListener(handleTabActivated);
 }
 
 /**
@@ -559,6 +575,36 @@ function handlePopupConnection(port) {
     port.onDisconnect.addListener(() => {
       // Cleanup if needed when popup closes
     });
+  }
+}
+
+/**
+ * Handle tab activated event - track the currently active tab
+ * @param {object} activeInfo - Object containing tabId and windowId
+ */
+async function handleTabActivated(activeInfo) {
+  const previousActiveTab = state.activeTabId;
+  state.activeTabId = activeInfo.tabId;
+  
+  console.log("Tab Volume Control: Active tab changed:", state.activeTabId);
+  
+  // Save updated state
+  await saveState();
+  
+  // If the active tab was not in the audio list, notify the popup to add it
+  try {
+    const tab = await browser.tabs.get(state.activeTabId);
+    if (tab && !state.audibleTabs.has(tab.id) && !state.tabAudioStatus[tab.id]) {
+      // Notify the popup that it should keep this tab in the list
+      browser.runtime.sendMessage({
+        action: "activeTabChanged",
+        tabId: tab.id
+      }).catch(() => {
+        // Popup might not be open, which is fine
+      });
+    }
+  } catch (error) {
+    console.error("Tab Volume Control: Error getting active tab info", error);
   }
 }
 

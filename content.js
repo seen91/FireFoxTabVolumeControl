@@ -421,6 +421,26 @@ function applyVolumeToElement(element, volumeLevel) {
  * @param {number} volumeLevel - Volume level (0.0 to 5.0)
  */
 function setVolume(volumeLevel) {
+  // If volume is at default 100% (1.0), just update state and skip all processing
+  if (volumeLevel === DEFAULT_VOLUME) {
+    // Only update the current volume in state if it has changed
+    if (state.currentVolume !== volumeLevel) {
+      state.currentVolume = volumeLevel;
+      
+      // Notify the background script about the volume change
+      browser.runtime.sendMessage({
+        action: "volumeChanged",
+        volume: volumeLevel
+      }).catch(err => {
+        console.warn("[Content] Error notifying background:", err);
+      });
+      
+      console.log("[Content] Volume set to default (100%), skipping all processing");
+    }
+    return;
+  }
+
+  // If we reach here, the volume is not 100%, so continue with normal processing
   state.currentVolume = volumeLevel;
   
   // Notify the background script about the volume change

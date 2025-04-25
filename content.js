@@ -299,7 +299,18 @@ function setupPlayEventListener() {
  * Initialize the Web Audio API
  */
 function initializeAudioContext() {
-  if (state.audioContext) return; // Already initialized
+  if (state.audioContext) {
+    // If we already have an AudioContext but it's suspended, try to resume it
+    if (state.audioContext.state === 'suspended') {
+      // Try to resume the AudioContext
+      state.audioContext.resume().then(() => {
+        console.log('Volume control: AudioContext resumed successfully');
+      }).catch(err => {
+        console.warn('Volume control: Could not resume AudioContext:', err);
+      });
+    }
+    return;
+  }
   
   try {
     // Create new AudioContext
@@ -310,12 +321,39 @@ function initializeAudioContext() {
     state.gainNode.gain.value = state.currentVolume;
     state.gainNode.connect(state.audioContext.destination);
     
+    // Check if the AudioContext is in a suspended state (autoplay policy)
+    if (state.audioContext.state === 'suspended') {
+      console.log('Volume control: AudioContext created but suspended due to autoplay policy');
+      
+      // Add listeners for user interaction events to resume the AudioContext
+      const userInteractionEvents = ['click', 'touchstart', 'keydown'];
+      const resumeAudioContext = () => {
+        if (state.audioContext && state.audioContext.state === 'suspended') {
+          state.audioContext.resume().then(() => {
+            console.log('Volume control: AudioContext resumed after user interaction');
+          }).catch(err => {
+            console.error('Volume control: Error resuming AudioContext:', err);
+          });
+        }
+        
+        // Remove the event listeners once we've successfully resumed
+        userInteractionEvents.forEach(eventType => {
+          document.removeEventListener(eventType, resumeAudioContext);
+        });
+      };
+      
+      // Add event listeners to resume on any user interaction
+      userInteractionEvents.forEach(eventType => {
+        document.addEventListener(eventType, resumeAudioContext, { once: false, passive: true });
+      });
+    }
+    
     // Apply the current volume to existing media elements
     state.audioElements.forEach(element => {
       connectElementToGainNode(element);
     });
     
-    console.log('Volume control: AudioContext initialized');
+    console.log('Volume control: AudioContext initialized with state:', state.audioContext.state);
   } catch (e) {
     console.error('Volume control: Web Audio API is not supported in this browser', e);
   }

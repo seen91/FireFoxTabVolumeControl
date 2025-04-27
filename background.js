@@ -5,13 +5,10 @@
 
 // Constants
 const SCAN_INTERVAL = 15000;   // Scan for audio tabs every 15 seconds
-const DETECTION_DELAY = 2000;  // Delay for audio detection after tab loads
 const VOLUME_APPLY_DELAY = 1500; // Delay for applying volume settings
 const INITIAL_SCAN_DELAY = 500; // Shorter delay for initial scan after popup opens
 
 // State
-// Note: In service workers, you must explicitly persist state,
-// as the worker can be terminated and restarted
 let state = StateManager.createDefaultState();
 
 /**
@@ -41,7 +38,7 @@ async function initializeExtension() {
   await scanTabsForAudio();
   
   // Set up periodic scanning
-  createScanInterval();
+  TabAudioDetector.createScanInterval(scanTabsForAudio, SCAN_INTERVAL);
   
   // Listen for popup connections to trigger immediate scans
   browser.runtime.onConnect.addListener(handlePopupConnection);
@@ -51,40 +48,10 @@ async function initializeExtension() {
 }
 
 /**
- * Load state from storage
- */
-async function loadState() {
-  try {
-    const result = await browser.storage.local.get(['extensionState']);
-    if (result.extensionState) {
-      restoreState(result.extensionState);
-      console.log("Tab Volume Control: State loaded");
-    }
-  } catch (error) {
-    console.error("Tab Volume Control: Error loading state", error);
-  }
-}
-
-/**
  * Save state to storage
  */
 async function saveState() {
   return await StateManager.saveState(state);
-}
-
-/**
- * Load settings from storage
- */
-async function loadSettings() {
-  try {
-    const result = await browser.storage.local.get(['domainVolumes']);
-    if (result.domainVolumes) {
-      state.domainVolumes = result.domainVolumes;
-    }
-    console.log("Tab Volume Control: Settings loaded");
-  } catch (error) {
-    console.error("Tab Volume Control: Error loading settings", error);
-  }
 }
 
 /**
@@ -104,85 +71,16 @@ function getDomainFromUrl(url) {
 }
 
 /**
- * Create interval for scanning tabs
- */
-function createScanInterval() {
-  // Use setTimeout for periodic scanning instead of alarms
-  function scheduleNextScan() {
-    setTimeout(() => {
-      scanTabsForAudio().then(() => {
-        scheduleNextScan();
-      }).catch(error => {
-        console.error("Error during tab scan:", error);
-        scheduleNextScan(); // Still schedule next scan even if there was an error
-      });
-    }, SCAN_INTERVAL);
-  }
-  
-  // Start the first scan
-  scheduleNextScan();
-  
-  // Also do an immediate scan
-  scanTabsForAudio().catch(error => {
-    console.error("Error during initial tab scan:", error);
-  });
-}
-
-/**
  * Scan all tabs to find ones with audio
  */
 async function scanTabsForAudio() {
-  try {
-    const tabs = await browser.tabs.query({});
-    
-    // Keep track of previous audible tabs to detect changes
-    const previousAudibleTabs = new Set(state.audibleTabs);
-    let audioStatusChanged = false;
-    
-    // Track current tabs with audio for comparison
-    const currentAudibleTabs = new Set();
-    
-    for (const tab of tabs) {
-      // Update audible status from browser
-      if (tab.audible) {
-        currentAudibleTabs.add(tab.id);
-        state.tabAudioStatus[tab.id] = true;
-        
-        // Notify if this is a newly audible tab or one that was previously audible
-        // but might have been removed from the popup
-        if (!state.audibleTabs.has(tab.id)) {
-          notifyTabAudioStarted(tab.id);
-          audioStatusChanged = true;
-        }
-      }
-      
-      // Try to detect audio elements even if the tab is not currently audible
-      // This helps identify tabs that have audio capability but aren't playing
-      tryDetectAudio(tab.id);
-    }
-    
-    // Update the audible tabs set
-    state.audibleTabs = currentAudibleTabs;
-    
-    // Notify about tabs that stopped being audible
-    for (const tabId of previousAudibleTabs) {
-      if (!currentAudibleTabs.has(tabId)) {
-        // Tab is no longer audible
-        notifyTabAudioStopped(tabId);
-        audioStatusChanged = true;
-      }
-    }
-    
-    // Only notify that the list has been updated if there were actual changes
-    if (audioStatusChanged) {
-      notifyTabAudioListUpdated();
-    }
-    
-    // Save updated state
-    await saveState();
-  } catch (error) {
-    console.error("Error scanning tabs:", error);
-  }
+  return await TabAudioDetector.scanTabsForAudio(
+    state,
+    NotificationManager.notifyTabAudioStarted,
+    NotificationManager.notifyTabAudioStopped,
+    NotificationManager.notifyTabAudioListUpdated,
+    saveState
+  );
 }
 
 /**
@@ -190,12 +88,7 @@ async function scanTabsForAudio() {
  * @param {number} tabId - ID of the tab
  */
 function notifyTabAudioStarted(tabId) {
-  browser.runtime.sendMessage({
-    action: "tabAudioStarted",
-    tabId: tabId
-  }).catch(() => {
-    // Popup might not be open, which is fine
-  });
+  NotificationManager.notifyTabAudioStarted(tabId);
 }
 
 /**
@@ -203,43 +96,14 @@ function notifyTabAudioStarted(tabId) {
  * @param {number} tabId - ID of the tab
  */
 function notifyTabAudioStopped(tabId) {
-  browser.runtime.sendMessage({
-    action: "tabAudioStopped",
-    tabId: tabId
-  }).catch(() => {
-    // Popup might not be open, which is fine
-  });
+  NotificationManager.notifyTabAudioStopped(tabId);
 }
-
-// Use a debouncer for tab list updates to avoid excessive notifications
-let tabListUpdateTimer = null;
-const TAB_LIST_UPDATE_DEBOUNCE = 500; // ms
 
 /**
  * Notify that the tab audio list has been updated
  */
 function notifyTabAudioListUpdated() {
-  // Debounce this notification
-  if (tabListUpdateTimer) {
-    clearTimeout(tabListUpdateTimer);
-  }
-  
-  tabListUpdateTimer = setTimeout(() => {
-    browser.runtime.sendMessage({
-      action: "tabAudioListUpdated"
-    }).catch(() => {
-      // Popup might not be open, which is fine
-    });
-    tabListUpdateTimer = null;
-  }, TAB_LIST_UPDATE_DEBOUNCE);
-}
-
-function is9GAGTab(tab) {
-  try {
-    return tab.url && tab.url.includes('9gag.com');
-  } catch (e) {
-    return false;
-  }
+  NotificationManager.notifyTabAudioListUpdated();
 }
 
 /**
@@ -247,42 +111,11 @@ function is9GAGTab(tab) {
  * @param {number} tabId - Tab ID to check
  */
 function tryDetectAudio(tabId) {
-  browser.tabs.get(tabId).then(tab => {
-    // Special case for 9GAG
-    if (is9GAGTab(tab)) {
-      state.tabAudioStatus[tabId] = true;
-      
-      // If a tab was previously audible and now has audio content again
-      // make sure to notify the popup
-      if (tab.audible && !state.audibleTabs.has(tabId)) {
-        state.audibleTabs.add(tabId);
-        notifyTabAudioStarted(tabId);
-      }
-      return;
-    }
-    
-    // Normal detection for other sites
-    browser.tabs.sendMessage(tabId, { action: "checkForAudio" })
-      .then(response => {
-        const previouslyHadAudio = state.tabAudioStatus[tabId];
-        
-        if (response && response.hasAudio) {
-          state.tabAudioStatus[tabId] = true;
-          
-          // If the tab has audio elements and is audible, but wasn't previously tracked
-          // as audible, make sure to notify the popup
-          if (tab.audible && !state.audibleTabs.has(tabId)) {
-            state.audibleTabs.add(tabId);
-            notifyTabAudioStarted(tabId);
-          }
-        }
-      })
-      .catch(() => {
-        // Ignore errors - content script may not be loaded yet
-      });
-  }).catch(() => {
-    // Tab might not exist anymore
-  });
+  TabAudioDetector.tryDetectAudio(
+    tabId, 
+    state, 
+    NotificationManager.notifyTabAudioStarted
+  );
 }
 
 /**
@@ -291,14 +124,7 @@ function tryDetectAudio(tabId) {
  * @param {number} volume - Volume level (0.0 to 5.0)
  */
 function applyVolumeToTab(tabId, volume) {
-  setTimeout(() => {
-    browser.tabs.sendMessage(tabId, {
-      action: "setVolume",
-      volume: volume
-    }).catch(() => {
-      // Content script might not be loaded yet, which is fine
-    });
-  }, VOLUME_APPLY_DELAY);
+  TabAudioDetector.applyVolumeToTab(tabId, volume, VOLUME_APPLY_DELAY);
 }
 
 /**
@@ -353,7 +179,7 @@ async function handleTabUpdated(tabId, changeInfo, tab) {
     // Try to detect audio after a short delay
     setTimeout(() => {
       tryDetectAudio(tabId);
-    }, DETECTION_DELAY);
+    }, TabAudioDetector.DETECTION_DELAY);
   }
 }
 
@@ -363,13 +189,7 @@ async function handleTabUpdated(tabId, changeInfo, tab) {
  * @param {string} title - New title
  */
 function notifyTabTitleChanged(tabId, title) {
-  browser.runtime.sendMessage({
-    action: "tabTitleChanged",
-    tabId: tabId,
-    title: title
-  }).catch(() => {
-    // Popup might not be open, which is fine
-  });
+  NotificationManager.notifyTabTitleChanged(tabId, title);
 }
 
 /**
@@ -542,12 +362,7 @@ async function handleTabActivated(activeInfo) {
     const tab = await browser.tabs.get(state.activeTabId);
     if (tab && !state.audibleTabs.has(tab.id) && !state.tabAudioStatus[tab.id]) {
       // Notify the popup that it should keep this tab in the list
-      browser.runtime.sendMessage({
-        action: "activeTabChanged",
-        tabId: tab.id
-      }).catch(() => {
-        // Popup might not be open, which is fine
-      });
+      NotificationManager.notifyActiveTabChanged(tab.id);
     }
   } catch (error) {
     console.error("Tab Volume Control: Error getting active tab info", error);

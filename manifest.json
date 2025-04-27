@@ -21,7 +21,7 @@
     "default_popup": "popup.html"
   },
   "background": {
-    "scripts": ["state-manager.js", "background.js"]
+    "scripts": ["state-manager.js", "tab-audio-detector.js", "notification-manager.js", "background.js"]
   },
   "content_scripts": [{
     "matches": ["<all_urls>"],

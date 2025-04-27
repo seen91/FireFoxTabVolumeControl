@@ -9,22 +9,22 @@ const MODULES = {
   youtube: {
     pattern: /youtube\.com/,
     name: 'YouTube',
-    path: 'site-handlers/youtube-handler.js'
+    path: 'src/site-handlers/youtube-handler.js'
   },
   reddit: {
     pattern: /reddit\.com/,
     name: 'Reddit',
-    path: 'site-handlers/reddit-handler.js'
+    path: 'src/site-handlers/reddit-handler.js'
   },
   ninegag: {
     pattern: /9gag\.com/,
     name: '9GAG',
-    path: 'site-handlers/9gag-handler.js'
+    path: 'src/site-handlers/9gag-handler.js'
   },
   standard: {
     pattern: /.*/,
     name: 'Standard',
-    path: 'site-handlers/standard-handler.js'
+    path: 'src/site-handlers/standard-handler.js'
   }
 };
 

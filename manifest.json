@@ -13,36 +13,42 @@
   ],
   "action": {
     "default_icon": {
-      "16": "icons/icon16.svg",
-      "48": "icons/icon48.svg",
-      "128": "icons/icon128.svg"
+      "16": "src/icons/icon16.svg",
+      "48": "src/icons/icon48.svg",
+      "128": "src/icons/icon128.svg"
     },
     "default_title": "Tab Volume Control",
-    "default_popup": "popup.html"
+    "default_popup": "src/ui/popup.html"
   },
   "background": {
-    "scripts": ["state-manager.js", "tab-audio-detector.js", "notification-manager.js", "background.js"]
+    "scripts": [
+      "src/background/state-manager.js", 
+      "src/background/tab-audio-detector.js", 
+      "src/background/notification-manager.js", 
+      "src/background/tab-manager.js",
+      "src/background/background.js"
+    ]
   },
   "content_scripts": [{
     "matches": ["<all_urls>"],
     "js": [
-      "module-loader.js",
-      "audio-context-manager.js",
-      "media-element-manager.js",
-      "volume-control.js",
-      "messaging-manager.js",
-      "content.js"
+      "src/utils/module-loader.js",
+      "src/core/audio-context-manager.js",
+      "src/core/media-element-manager.js",
+      "src/core/volume-control.js",
+      "src/utils/messaging-manager.js",
+      "src/core/content.js"
     ],
     "run_at": "document_start"
   }],
   "web_accessible_resources": [{
-    "resources": ["site-handlers/*.js"],
+    "resources": ["src/site-handlers/*.js"],
     "matches": ["<all_urls>"]
   }],
   "icons": {
-    "16": "icons/icon16.svg",
-    "48": "icons/icon48.svg",
-    "128": "icons/icon128.svg"
+    "16": "src/icons/icon16.svg",
+    "48": "src/icons/icon48.svg",
+    "128": "src/icons/icon128.svg"
   },
   "author": "Sebastian Engvall",
   "homepage_url": "https://github.com/seen91/FireFoxTabVolumeControl",

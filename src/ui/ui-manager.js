@@ -84,8 +84,8 @@ UIManager.createTabHeader = function(tab, volumePercent) {
   // Add favicon
   const tabIcon = document.createElement('img');
   tabIcon.className = 'tab-icon';
-  tabIcon.src = tab.favIconUrl || 'icons/icon16.svg';
-  tabIcon.onerror = () => { tabIcon.src = 'icons/icon16.svg'; };
+  tabIcon.src = tab.favIconUrl || '../../../icons/icon16.svg';
+  tabIcon.onerror = () => { tabIcon.src = '../../../icons/icon16.svg'; };
   
   // Add title
   const tabTitle = document.createElement('div');

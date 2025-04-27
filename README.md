@@ -42,12 +42,35 @@ After finding it useful myself, I decided to share it with the Firefox community
 4. Use the master volume control at the top to adjust all tabs at once
 5. Changes apply immediately as you adjust the volume
 
+## Project Structure
+
+The extension has been refactored for better organization:
+
+- **src/background/** - Background service worker files for tab monitoring and state management
+- **src/core/** - Core audio functionality and content scripts
+- **src/site-handlers/** - Site-specific implementations (YouTube, Reddit, etc.)
+- **src/ui/** - Popup interface and UI management
+- **src/utils/** - Utility functions and shared services
+- **src/icons/** - Extension icons
+
+See [src/README.md](src/README.md) for a detailed breakdown of the project structure.
+
 ## Technical Details
 
 The add-on uses the Web Audio API to modify audio output:
 - Values below 100% reduce volume normally
 - Values above 100% amplify the audio (similar to a preamplifier)
 - Maximum amplification is 500%, which is usually sufficient for most quiet media
+
+### How it Works
+
+1. **Audio Detection**: The extension detects tabs playing audio using Firefox's built-in audio indicators and additional detection methods.
+
+2. **Volume Control**:
+   - For standard volume reduction (0-100%): Uses the native HTML5 media element volume property.
+   - For volume amplification (100-500%): Creates an AudioContext with a GainNode to boost the audio signal.
+
+3. **Site-Specific Handling**: Custom handlers for sites like YouTube and Reddit which implement audio in non-standard ways.
 
 ## License
 

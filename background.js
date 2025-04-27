@@ -12,33 +12,7 @@ const INITIAL_SCAN_DELAY = 500; // Shorter delay for initial scan after popup op
 // State
 // Note: In service workers, you must explicitly persist state,
 // as the worker can be terminated and restarted
-let state = {
-  tabVolumes: {},       // Volume settings per tab
-  domainVolumes: {},    // Volume settings per domain
-  tabAudioStatus: {},   // Which tabs have audio
-  tabMediaStatus: {},   // Tabs with media elements (but might not be playing)
-  audibleTabs: new Set(), // Set of tabs that are currently audible
-  activeTabId: null     // Track the currently active tab
-};
-
-// Convert Set to array for serialization
-function getSerializableState() {
-  return {
-    ...state,
-    audibleTabs: Array.from(state.audibleTabs)
-  };
-}
-
-// Restore Set from array after deserialization
-function restoreState(savedState) {
-  if (!savedState) return;
-  
-  state = {
-    ...savedState,
-    audibleTabs: new Set(savedState.audibleTabs || []),
-    activeTabId: savedState.activeTabId || null
-  };
-}
+let state = StateManager.createDefaultState();
 
 /**
  * Initialize the extension
@@ -47,10 +21,10 @@ async function initializeExtension() {
   console.log("Tab Volume Control: Extension initialized (Service Worker)");
   
   // Load state from storage if available
-  await loadState();
+  state = await StateManager.loadState();
   
   // Load settings
-  await loadSettings();
+  state = await StateManager.loadDomainVolumes(state);
   
   // Get current active tab
   try {
@@ -95,13 +69,7 @@ async function loadState() {
  * Save state to storage
  */
 async function saveState() {
-  try {
-    await browser.storage.local.set({
-      extensionState: getSerializableState()
-    });
-  } catch (err) {
-    console.error("Error saving state:", err);
-  }
+  return await StateManager.saveState(state);
 }
 
 /**
@@ -123,13 +91,7 @@ async function loadSettings() {
  * Save domain volume settings to storage
  */
 async function saveDomainVolumes() {
-  try {
-    await browser.storage.local.set({
-      domainVolumes: state.domainVolumes
-    });
-  } catch (err) {
-    console.error("Error saving domain volumes:", err);
-  }
+  return await StateManager.saveDomainVolumes(state.domainVolumes);
 }
 
 /**
@@ -138,12 +100,7 @@ async function saveDomainVolumes() {
  * @returns {string|null} Domain or null if invalid URL
  */
 function getDomainFromUrl(url) {
-  try {
-    const urlObj = new URL(url);
-    return urlObj.hostname;
-  } catch (e) {
-    return null;
-  }
+  return StateManager.getDomainFromUrl(url);
 }
 
 /**
@@ -353,20 +310,25 @@ function applyVolumeToTab(tabId, volume) {
 async function handleTabUpdated(tabId, changeInfo, tab) {
   // Track if tab becomes audible
   if (changeInfo.audible !== undefined) {
-    const wasAudible = state.audibleTabs.has(tabId);
+    let audioStatusChanged = false;
     
     if (changeInfo.audible) {
-      state.audibleTabs.add(tabId);
-      state.tabAudioStatus[tabId] = true;
+      // Add tab to audible tabs using StateManager
+      const wasNewlyAdded = StateManager.addAudibleTab(state, tabId);
       
       // Always notify when a tab becomes audible
       // This ensures that tabs that start playing again are added back to the popup
       notifyTabAudioStarted(tabId);
-    } else if (wasAudible) {
-      state.audibleTabs.delete(tabId);
+      audioStatusChanged = true;
+    } else {
+      // Remove tab from audible tabs using StateManager
+      const wasRemoved = StateManager.removeAudibleTab(state, tabId);
       
       // Notify if the tab is no longer audible
-      notifyTabAudioStopped(tabId);
+      if (wasRemoved) {
+        notifyTabAudioStopped(tabId);
+        audioStatusChanged = true;
+      }
     }
     
     // Save updated state
@@ -383,7 +345,7 @@ async function handleTabUpdated(tabId, changeInfo, tab) {
   
   if (changeInfo.status === 'complete' && tab.url) {
     // Check for domain-specific volume setting
-    const domain = getDomainFromUrl(tab.url);
+    const domain = StateManager.getDomainFromUrl(tab.url);
     if (domain && state.domainVolumes[domain]) {
       applyVolumeToTab(tabId, state.domainVolumes[domain]);
     }
@@ -415,20 +377,8 @@ function notifyTabTitleChanged(tabId, title) {
  * @param {number} tabId - ID of the removed tab
  */
 async function handleTabRemoved(tabId) {
-  // Clean up storage
-  if (state.tabVolumes[tabId]) {
-    delete state.tabVolumes[tabId];
-  }
-  
-  if (state.tabAudioStatus[tabId]) {
-    delete state.tabAudioStatus[tabId];
-  }
-  
-  if (state.tabMediaStatus[tabId]) {
-    delete state.tabMediaStatus[tabId];
-  }
-  
-  state.audibleTabs.delete(tabId);
+  // Use StateManager to clean up tab data
+  state = StateManager.cleanupTabData(state, tabId);
   
   // Save updated state
   await saveState();
@@ -446,17 +396,14 @@ async function handleMessage(message, sender) {
     const tabId = sender.tab.id;
     const volume = message.volume;
     
-    // Store in tab-specific settings
-    state.tabVolumes[tabId] = volume;
-    
-    // Mark this tab as having audio
-    state.tabAudioStatus[tabId] = true;
+    // Store in tab-specific settings using StateManager
+    state = StateManager.updateTabVolume(state, tabId, volume);
     
     // Apply to domain if requested
     if (message.applyToDomain && sender.tab.url) {
-      const domain = getDomainFromUrl(sender.tab.url);
+      const domain = StateManager.getDomainFromUrl(sender.tab.url);
       if (domain) {
-        state.domainVolumes[domain] = volume;
+        state = StateManager.updateDomainVolume(state, domain, volume);
         await saveDomainVolumes();
       }
     }
@@ -468,7 +415,7 @@ async function handleMessage(message, sender) {
   
   // Handle request for domain volume
   else if (message.action === "getDomainVolume" && sender.tab && sender.tab.url) {
-    const domain = getDomainFromUrl(sender.tab.url);
+    const domain = StateManager.getDomainFromUrl(sender.tab.url);
     if (domain && state.domainVolumes[domain]) {
       return { volume: state.domainVolumes[domain] };
     } else {
@@ -479,28 +426,28 @@ async function handleMessage(message, sender) {
   // Handle request for tab audio status
   else if (message.action === "getTabAudioStatus") {
     // Create filtered copy to only return tabs that are actually audible
-    const audiblTabsObj = {};
+    const audibleTabsObj = {};
     
     // First check browser's audible status
     state.audibleTabs.forEach(tabId => {
-      audiblTabsObj[tabId] = true;
+      audibleTabsObj[tabId] = true;
     });
     
     // Then check our own tracking
     for (const [tabId, hasAudio] of Object.entries(state.tabAudioStatus)) {
       if (hasAudio && (state.audibleTabs.has(parseInt(tabId)))) {
-        audiblTabsObj[tabId] = true;
+        audibleTabsObj[tabId] = true;
       }
     }
     
-    return { tabAudioStatus: audiblTabsObj };
+    return { tabAudioStatus: audibleTabsObj };
   }
   
   // Handle request to save domain volume
   else if (message.action === "saveDomainVolume" && sender.tab && sender.tab.url) {
-    const domain = getDomainFromUrl(sender.tab.url);
+    const domain = StateManager.getDomainFromUrl(sender.tab.url);
     if (domain) {
-      state.domainVolumes[domain] = message.volume;
+      state = StateManager.updateDomainVolume(state, domain, message.volume);
       await saveDomainVolumes();
       return { success: true };
     } else {
@@ -525,11 +472,10 @@ async function handleMessage(message, sender) {
     
     // If it's actively playing audio, add to audible tabs and notify the popup
     if (message.hasActiveAudio) {
-      const wasAudible = state.audibleTabs.has(tabId);
-      state.audibleTabs.add(tabId);
+      const wasNewlyAdded = StateManager.addAudibleTab(state, tabId);
       
       // Notify the popup if this is a newly audible tab
-      if (!wasAudible) {
+      if (wasNewlyAdded) {
         notifyTabAudioStarted(tabId);
       }
     }
@@ -583,8 +529,8 @@ function handlePopupConnection(port) {
  * @param {object} activeInfo - Object containing tabId and windowId
  */
 async function handleTabActivated(activeInfo) {
-  const previousActiveTab = state.activeTabId;
-  state.activeTabId = activeInfo.tabId;
+  const updatedState = StateManager.updateActiveTab(state, activeInfo.tabId);
+  state = updatedState;
   
   console.log("Tab Volume Control: Active tab changed:", state.activeTabId);
   

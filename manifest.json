@@ -21,8 +21,7 @@
     "default_popup": "popup.html"
   },
   "background": {
-    "scripts": ["background.js"],
-    "type": "module"
+    "scripts": ["state-manager.js", "background.js"]
   },
   "content_scripts": [{
     "matches": ["<all_urls>"],

@@ -34,8 +34,8 @@ function initialize() {
   state.initialized = true;
 
   // Set up handler for window messages (for site handlers to communicate)
-  setupWindowMessageListener();
-  setupMessageListener(); // Always set up the extension message listener
+  MessagingManager.setupWindowMessageListener(state, notifyHasAudio);
+  MessagingManager.setupMessageListener(state, setVolume); // Always set up the extension message listener
 
   // Get current hostname for site-specific handling
   const hostname = window.location.hostname;
@@ -154,92 +154,42 @@ function handleDirectVideo(video) {
 }
 
 /**
- * Set up listener for window messages from site handlers and module loader
- */
-function setupWindowMessageListener() {
-  window.addEventListener('message', function(event) {
-    // Only accept messages from the same window
-    if (event.source !== window) return;
-    
-    const data = event.data;
-    
-    // Handle messages from site handlers
-    if (data && data.source) {
-      // For 9GAG, we handle everything ourselves in content.js
-      if (data.source === "9gag-handler") {
-        console.log("[Content] Received message from 9GAG handler, but using direct handling");
-        return;
-      }
-      
-      // Handle other site handler messages normally
-      if (data.action === 'notifyAudio') {
-        state.pageHasAudio = true;
-        state.pageHasActiveAudio = data.hasActiveAudio;
-        notifyHasAudio();
-      }
-    }
-  }, false);
-}
-
-/**
  * Initialize standard volume control for most sites
  */
 function initStandardVolumeControl() {
-  setupMutationObserver();
-  findExistingMediaElements();
-  setupPlayEventListener();
-  hookMediaElementCreation();
-}
+  // Create a wrapper function for handleMediaElement that provides all the required dependencies
+  const handleMediaElementWrapper = (element) => {
+    MediaElementManager.handleMediaElement(
+      element, 
+      state, 
+      MediaElementManager.applyVolumeToElement, 
+      (element) => connectElementToGainNode(element), 
+      notifyHasAudio
+    );
+  };
 
-/**
- * Set up a MutationObserver to detect dynamically added media elements
- */
-function setupMutationObserver() {
-  const observer = new MutationObserver((mutations) => {
-    let newMediaFound = false;
-
-    mutations.forEach((mutation) => {
-      if (mutation.addedNodes) {
-        mutation.addedNodes.forEach((node) => {
-          if (isMediaElement(node)) {
-            handleMediaElement(node);
-            newMediaFound = true;
-          } else if (node.querySelectorAll) {
-            const mediaElements = node.querySelectorAll('audio, video');
-            if (mediaElements.length > 0) {
-              mediaElements.forEach(handleMediaElement);
-              newMediaFound = true;
-            }
-          }
-        });
-      }
-    });
-
-    if (newMediaFound && !state.audioContext) {
-      AudioContextManager.initializeAudioContext(state, connectElementToGainNode);
-      checkForActiveAudio(); // Check if any are active
-    }
-  });
-
-  observer.observe(document.documentElement, {
-    childList: true,
-    subtree: true,
-    attributes: true,
-    attributeFilter: ['src']
-  });
-}
-
-/**
- * Find any media elements that already exist in the page
- */
-function findExistingMediaElements() {
-  const existingMedia = document.querySelectorAll('audio, video');
-  if (existingMedia.length > 0) {
-    state.pageHasAudio = true;
-    existingMedia.forEach(handleMediaElement);
-    AudioContextManager.initializeAudioContext(state, connectElementToGainNode);
-    checkForActiveAudio(); // Check if any are active
-  }
+  // Set up detection for media elements
+  MediaElementManager.setupMutationObserver(
+    state, 
+    handleMediaElementWrapper, 
+    MediaElementManager.isMediaElement, 
+    () => checkForActiveAudio()
+  );
+  
+  MediaElementManager.findExistingMediaElements(
+    state, 
+    handleMediaElementWrapper, 
+    () => checkForActiveAudio()
+  );
+  
+  MediaElementManager.setupPlayEventListener(
+    state, 
+    handleMediaElementWrapper, 
+    notifyHasAudio, 
+    () => checkForActiveAudio()
+  );
+  
+  MediaElementManager.hookMediaElementCreation(handleMediaElementWrapper);
 }
 
 /**
@@ -300,40 +250,13 @@ function setupPlayEventListener() {
  * @param {HTMLMediaElement} element - The media element to handle
  */
 function handleMediaElement(element) {
-  // Skip if already handling this element
-  if (state.audioElements.has(element)) return;
-  
-  // Skip if this element is managed by the 9GAG handler
-  if (element._managed_by_9gag_handler || window._9gagVolumeHandlerActive) {
-    console.log('Volume control: Skipping element managed by 9GAG handler');
-    return;
-  }
-  
-  state.pageHasAudio = true;
-  state.audioElements.add(element);
-  
-  // Check if it's already playing
-  if (!element.paused && !element.ended && element.currentTime > 0) {
-    state.pageHasActiveAudio = true;
-    notifyHasAudio();
-  }
-  
-  // Apply current volume without creating a MediaElementSourceNode yet
-  applyVolumeToElement(element, state.currentVolume);
-  
-  // If audio context already exists, connect this element
-  if (state.audioContext && state.gainNode && !state.using9GagHandler) {
-    connectElementToGainNode(element);
-  }
-  
-  // Add an event listener for when the media starts playing
-  element.addEventListener('play', () => {
-    if (!state.audioContext) {
-      AudioContextManager.initializeAudioContext(state, connectElementToGainNode);
-    }
-    state.pageHasActiveAudio = true;
-    notifyHasAudio();
-  }, { once: false });
+  MediaElementManager.handleMediaElement(
+    element, 
+    state, 
+    MediaElementManager.applyVolumeToElement, 
+    connectElementToGainNode, 
+    notifyHasAudio
+  );
 }
 
 /**
@@ -341,35 +264,11 @@ function handleMediaElement(element) {
  * @param {HTMLMediaElement} element - The media element to connect
  */
 function connectElementToGainNode(element) {
-  // Don't reconnect if already connected
-  if (state.mediaSourceNodes.has(element)) return;
-  
-  // Skip if this is a 9GAG video - they don't work well with AudioContext
-  if (element._managed_by_9gag_handler || window._9gagVolumeHandlerActive || 
-      window.location.hostname.includes('9gag.com')) {
-    console.log('Volume control: Skipping AudioContext for 9GAG video');
-    return;
-  }
-  
-  try {
-    // Create a new MediaElementSourceNode
-    const source = state.audioContext.createMediaElementSource(element);
-    state.mediaSourceNodes.set(element, source);
-    
-    // Connect to our gain node
-    source.connect(state.gainNode);
-    
-    // Set HTML5 volume to 100% as we'll control it with the gain node
-    if (element.volume !== 1.0) {
-      element.volume = 1.0;
-    }
-    
-    console.log('Volume control: Successfully connected element to gain node');
-  } catch (e) {
-    console.error('Volume control: Error connecting media element to gain node:', e);
-    // If we failed to connect to gain node, use HTML5 volume as fallback
-    applyVolumeToElement(element, state.currentVolume);
-  }
+  MediaElementManager.connectElementToGainNode(
+    element, 
+    state, 
+    MediaElementManager.applyVolumeToElement
+  );
 }
 
 /**
@@ -378,16 +277,7 @@ function connectElementToGainNode(element) {
  * @param {number} volumeLevel - Volume level (0.0 to 5.0)
  */
 function applyVolumeToElement(element, volumeLevel) {
-  try {
-    // HTML5 volume is capped at 1.0, so we can only use this for reducing volume
-    if (volumeLevel <= 1.0) {
-      element.volume = volumeLevel;
-    } else {
-      element.volume = 1.0; // Max out HTML5 volume
-    }
-  } catch (e) {
-    console.error('Volume control: Error setting element volume:', e);
-  }
+  MediaElementManager.applyVolumeToElement(element, volumeLevel);
 }
 
 /**
@@ -395,81 +285,12 @@ function applyVolumeToElement(element, volumeLevel) {
  * @param {number} volumeLevel - Volume level (0.0 to 5.0)
  */
 function setVolume(volumeLevel) {
-  // If volume is at default 100% (1.0), just update state and skip all processing
-  if (volumeLevel === DEFAULT_VOLUME) {
-    // Only update the current volume in state if it has changed
-    if (state.currentVolume !== volumeLevel) {
-      state.currentVolume = volumeLevel;
-      
-      // Notify the background script about the volume change
-      browser.runtime.sendMessage({
-        action: "volumeChanged",
-        volume: volumeLevel
-      }).catch(err => {
-        console.warn("[Content] Error notifying background:", err);
-      });
-      
-      console.log("[Content] Volume set to default (100%), skipping all processing");
-    }
-    return;
-  }
-
-  // If we reach here, the volume is not 100%, so continue with normal processing
-  state.currentVolume = volumeLevel;
-  
-  // Notify the background script about the volume change
-  browser.runtime.sendMessage({
-    action: "volumeChanged",
-    volume: volumeLevel
-  }).catch(err => {
-    console.warn("[Content] Error notifying background:", err);
-  });
-
-  // Determine if we need to use site-specific volume handling
-  const hostname = window.location.hostname;
-  
-  // For 9GAG, use direct volume control always
-  if (hostname.includes('9gag.com')) {
-    // For 9GAG, we cap the volume at 100% as amplification doesn't work properly
-    const cappedVolume = Math.min(volumeLevel, 1.0);
-    console.log("[Content] Setting 9GAG volume directly to:", cappedVolume);
-    
-    const videos = document.querySelectorAll('video');
-    let successCount = 0;
-    
-    videos.forEach(video => {
-      try {
-        // Mark as managed
-        video._managed_by_9gag_handler = true;
-        video.volume = cappedVolume;
-        successCount++;
-      } catch (videoError) {
-        console.error("[Content] Error setting video volume:", videoError);
-      }
-    });
-    
-    console.log(`[Content] Directly set volume on ${successCount} of ${videos.length} videos`);
-    
-    // Handle future videos - this applies volume to any late-loading videos
-    setTimeout(() => {
-      const lateVideos = document.querySelectorAll('video');
-      lateVideos.forEach(video => {
-        try {
-          if (video.volume !== cappedVolume) {
-            video.volume = cappedVolume;
-          }
-        } catch (e) {}
-      });
-    }, 200);
-    
-    return;
-  } else if (hostname.includes('youtube.com')) {
-    setYouTubeVolume(volumeLevel);
-    return;
-  }
-
-  // Standard volume handling for non-site-specific cases
-  setStandardVolume(volumeLevel);
+  VolumeControlManager.setVolume(
+    state, 
+    volumeLevel, 
+    MediaElementManager.applyVolumeToElement, 
+    setYouTubeVolume
+  );
 }
 
 /**
@@ -477,56 +298,18 @@ function setVolume(volumeLevel) {
  * @param {number} volumeLevel - Volume level (0.0 to 5.0)
  */
 function setStandardVolume(volumeLevel) {
-  // Apply volume using the gainNode if available (for amplification)
-  if (state.gainNode) {
-    try {
-      state.gainNode.gain.value = volumeLevel;
-    } catch (e) {
-      console.error('Volume control: Error updating gain node:', e);
-    }
-  }
-  
-  // Apply to media elements as fallback or for volume reduction
-  state.audioElements.forEach(element => {
-    applyVolumeToElement(element, volumeLevel);
-  });
-}
-
-/**
- * Set up message listener for extension communication
- */
-function setupMessageListener() {
-  // Listen for messages from the extension
-  browser.runtime.onMessage.addListener((message, sender, sendResponse) => {
-    if (message.action === "setVolume") {
-      setVolume(message.volume);
-      sendResponse({success: true});
-      return true;
-    } else if (message.action === "getVolume") {
-      sendResponse({volume: state.currentVolume});
-      return true;
-    } else if (message.action === "checkForAudio") {
-      // Special case for 9GAG - always report as having audio
-      if (window.location.hostname.includes('9gag.com')) {
-        sendResponse({hasAudio: true});
-      } else {
-        sendResponse({hasAudio: state.pageHasAudio});
-      }
-      return true;
-    }
-  });
+  VolumeControlManager.setStandardVolume(
+    state, 
+    volumeLevel, 
+    MediaElementManager.applyVolumeToElement
+  );
 }
 
 /**
  * Notify background script that this page has audio
  */
 function notifyHasAudio() {
-  browser.runtime.sendMessage({
-    action: "notifyAudio",
-    hasActiveAudio: state.pageHasActiveAudio
-  }).catch(() => {
-    // Ignore errors
-  });
+  MessagingManager.notifyHasAudio(state.pageHasActiveAudio);
 }
 
 /**
@@ -561,7 +344,7 @@ function hookMediaElementCreation() {
  * @returns {boolean} True if the node is a media element
  */
 function isMediaElement(node) {
-  return node.nodeName === 'AUDIO' || node.nodeName === 'VIDEO';
+  return MediaElementManager.isMediaElement(node);
 }
 
 /**

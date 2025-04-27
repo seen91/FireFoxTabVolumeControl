@@ -29,6 +29,9 @@
     "js": [
       "module-loader.js",
       "audio-context-manager.js",
+      "media-element-manager.js",
+      "volume-control.js",
+      "messaging-manager.js",
       "content.js"
     ],
     "run_at": "document_start"

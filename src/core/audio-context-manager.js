@@ -57,6 +57,46 @@ AudioContextManager.initializeAudioContext = function(state, connectElementToGai
 };
 
 /**
+ * Check if a media element has cross-origin content
+ * @param {HTMLMediaElement} element - The media element to check
+ * @returns {boolean} True if the element has cross-origin content
+ */
+AudioContextManager.hasCrossOriginContent = function(element) {
+  // Check if element has a src attribute
+  if (element.src) {
+    try {
+      const elementUrl = new URL(element.src);
+      // Compare origin with current page origin
+      return elementUrl.origin !== window.location.origin;
+    } catch (e) {
+      // If we can't parse the URL, assume it's not cross-origin
+      return false;
+    }
+  }
+  
+  // For elements using <source> tags
+  const sources = element.querySelectorAll('source');
+  if (sources.length > 0) {
+    for (let i = 0; i < sources.length; i++) {
+      const source = sources[i];
+      if (source.src) {
+        try {
+          const sourceUrl = new URL(source.src);
+          if (sourceUrl.origin !== window.location.origin) {
+            return true;
+          }
+        } catch (e) {
+          // If we can't parse the URL, continue to the next source
+          continue;
+        }
+      }
+    }
+  }
+  
+  return false;
+};
+
+/**
  * Set up comprehensive handlers for resuming AudioContext
  * This uses multiple techniques to ensure we catch all user interactions
  * @param {Object} state - The global state object

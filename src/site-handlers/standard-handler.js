@@ -122,10 +122,55 @@ function handleStandardMediaElement(element) {
   }, { once: true });
 }
 
+// Check if a media element has cross-origin content
+function hasStandardElementCrossOriginContent(element) {
+  // Check if global AudioContextManager is available and use its function
+  if (typeof AudioContextManager !== 'undefined' && AudioContextManager.hasCrossOriginContent) {
+    return AudioContextManager.hasCrossOriginContent(element);
+  }
+  
+  // Otherwise implement basic check here
+  if (element.src) {
+    try {
+      const elementUrl = new URL(element.src);
+      return elementUrl.origin !== window.location.origin;
+    } catch (e) {
+      return false;
+    }
+  }
+  
+  const sources = element.querySelectorAll('source');
+  if (sources.length > 0) {
+    for (let i = 0; i < sources.length; i++) {
+      if (sources[i].src) {
+        try {
+          const sourceUrl = new URL(sources[i].src);
+          if (sourceUrl.origin !== window.location.origin) {
+            return true;
+          }
+        } catch (e) {
+          continue;
+        }
+      }
+    }
+  }
+  
+  return false;
+}
+
 // Connect standard element to gain node
 function connectStandardElementToGainNode(element) {
   // Don't reconnect if already connected
   if (stdMediaSourceNodes.has(element)) return;
+  
+  // Check for cross-origin content first
+  if (element._has_cross_origin_content || hasStandardElementCrossOriginContent(element)) {
+    console.log('Volume control: Detected cross-origin content in standard handler, using HTML5 volume instead', element);
+    element._has_cross_origin_content = true;
+    // Fall back to direct volume control
+    applyStandardVolumeToElement(element, stdCurrentVolume);
+    return;
+  }
   
   try {
     // Create a new MediaElementSourceNode
@@ -143,6 +188,13 @@ function connectStandardElementToGainNode(element) {
     console.log('Volume control: Successfully connected standard element to gain node');
   } catch (e) {
     console.error('Volume control: Error connecting standard element to gain node:', e);
+    
+    // If the error message contains "cross-origin", mark the element
+    if (e.message && e.message.includes('cross-origin')) {
+      element._has_cross_origin_content = true;
+      console.log('Volume control: Cross-origin issue detected in standard handler, falling back to HTML5 volume');
+    }
+    
     // If we failed to connect to gain node, use HTML5 volume as fallback
     applyStandardVolumeToElement(element, stdCurrentVolume);
   }
@@ -151,11 +203,24 @@ function connectStandardElementToGainNode(element) {
 // Apply volume directly to standard element
 function applyStandardVolumeToElement(element, volumeLevel) {
   try {
-    // HTML5 volume is capped at 1.0, so we can only use this for reducing volume
+    // For cross-origin content, we can only use HTML5 volume (max 1.0)
+    if (element._has_cross_origin_content) {
+      if (volumeLevel <= 1.0) {
+        element.volume = volumeLevel;
+      } else {
+        // We can't amplify cross-origin content
+        element.volume = 1.0;
+      }
+      return;
+    }
+    
+    // Standard handling for non-cross-origin content
     if (volumeLevel <= 1.0) {
       element.volume = volumeLevel;
     } else {
-      element.volume = 1.0; // Max out HTML5 volume
+      // We need amplification, so use maximum HTML5 volume
+      // The actual amplification will be done with the gain node
+      element.volume = 1.0;
     }
   } catch (e) {
     console.error('Volume control: Error setting standard element volume:', e);
@@ -212,14 +277,15 @@ function hookStandardMediaElementCreation() {
 
 // Setup message listener for standard handling
 function setupStandardMessageListener() {
-  browser.runtime.onMessage.addListener((message, sender, sendResponse) => {
+  browser.runtime.onMessage.addListener((message) => {
     if (message.action === "setVolume") {
       setStandardVolume(message.volume);
-      sendResponse({success: true});
-      return true;
+      return Promise.resolve({ success: true });
     } else if (message.action === "getVolume") {
-      sendResponse({volume: stdCurrentVolume});
-      return true;
+      return Promise.resolve({
+        success: true,
+        volume: stdCurrentVolume
+      });
     }
   });
 }

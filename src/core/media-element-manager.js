@@ -70,6 +70,20 @@ MediaElementManager.connectElementToGainNode = function(element, state, applyVol
     return;
   }
   
+  // Check if this element has cross-origin content
+  let hasCrossOrigin = false;
+  if (typeof AudioContextManager !== 'undefined' && AudioContextManager.hasCrossOriginContent) {
+    hasCrossOrigin = AudioContextManager.hasCrossOriginContent(element);
+    if (hasCrossOrigin) {
+      console.log('Volume control: Detected cross-origin content, using HTML5 volume instead of AudioContext', element);
+      // Mark this element as cross-origin to prevent future connection attempts
+      element._has_cross_origin_content = true;
+      // Fall back to using direct volume control
+      applyVolumeToElement(element, state.currentVolume);
+      return;
+    }
+  }
+  
   try {
     // Create a new MediaElementSourceNode
     const source = state.audioContext.createMediaElementSource(element);
@@ -86,6 +100,13 @@ MediaElementManager.connectElementToGainNode = function(element, state, applyVol
     console.log('Volume control: Successfully connected element to gain node');
   } catch (e) {
     console.error('Volume control: Error connecting media element to gain node:', e);
+    
+    // If the error message contains "cross-origin", mark the element
+    if (e.message && e.message.includes('cross-origin')) {
+      element._has_cross_origin_content = true;
+      console.log('Volume control: Cross-origin issue detected, falling back to HTML5 volume');
+    }
+    
     // If we failed to connect to gain node, use HTML5 volume as fallback
     applyVolumeToElement(element, state.currentVolume);
   }
@@ -102,7 +123,14 @@ MediaElementManager.applyVolumeToElement = function(element, volumeLevel) {
     if (volumeLevel <= 1.0) {
       element.volume = volumeLevel;
     } else {
-      element.volume = 1.0; // Max out HTML5 volume
+      // For cross-origin content, we can't amplify beyond 1.0
+      // However, if we have access to a gain node that's already connected, we can still use that
+      if (element._has_cross_origin_content) {
+        console.log('Volume control: Using HTML5 volume for cross-origin content (limited to 100%)');
+        element.volume = 1.0; // Max out HTML5 volume since we can't amplify
+      } else {
+        element.volume = 1.0; // Max out HTML5 volume
+      }
     }
   } catch (e) {
     console.error('Volume control: Error setting element volume:', e);

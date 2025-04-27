@@ -1,13 +1,16 @@
 // audio-context-manager.js
 // Handles initialization and management of Web Audio API components
 
+// Create a namespace to avoid global pollution
+const AudioContextManager = {};
+
 /**
  * Initialize the Web Audio API
  * @param {Object} state - The global state object containing audioContext, gainNode, etc.
  * @param {Function} connectElementToGainNode - Function to connect elements to the gain node
  * @returns {boolean} True if initialization was successful
  */
-export function initializeAudioContext(state, connectElementToGainNode) {
+AudioContextManager.initializeAudioContext = function(state, connectElementToGainNode) {
   if (state.audioContext) {
     // If we already have an AudioContext but it's suspended, try to resume it
     if (state.audioContext.state === 'suspended') {
@@ -37,7 +40,7 @@ export function initializeAudioContext(state, connectElementToGainNode) {
       state.autoplayBlocked = true;
       
       // Setup our enhanced autoplay policy handling
-      setupAudioContextResumeHandling(state, connectElementToGainNode);
+      AudioContextManager.setupAudioContextResumeHandling(state, connectElementToGainNode);
     }
     
     // Apply the current volume to existing media elements
@@ -51,7 +54,7 @@ export function initializeAudioContext(state, connectElementToGainNode) {
     console.error('Volume control: Web Audio API is not supported in this browser');
     return false;
   }
-}
+};
 
 /**
  * Set up comprehensive handlers for resuming AudioContext
@@ -59,7 +62,7 @@ export function initializeAudioContext(state, connectElementToGainNode) {
  * @param {Object} state - The global state object
  * @param {Function} tryReconnectMediaElements - Function to reconnect elements after context resumed
  */
-export function setupAudioContextResumeHandling(state, tryReconnectMediaElements) {
+AudioContextManager.setupAudioContextResumeHandling = function(state, tryReconnectMediaElements) {
   // Bail if we're already set up
   if (state.resumeHandlersInitialized) return;
   state.resumeHandlersInitialized = true;
@@ -125,7 +128,7 @@ export function setupAudioContextResumeHandling(state, tryReconnectMediaElements
     for (const mutation of mutations) {
       if (mutation.type === 'attributes' || mutation.type === 'childList') {
         // Look for potential media controls in the changed elements
-        findAndAttachToMediaControls(mutation.target, state);
+        AudioContextManager.findAndAttachToMediaControls(mutation.target, state);
       }
     }
   });
@@ -140,7 +143,7 @@ export function setupAudioContextResumeHandling(state, tryReconnectMediaElements
     });
     
     // Do an initial scan for media controls
-    findAndAttachToMediaControls(document.body, state);
+    AudioContextManager.findAndAttachToMediaControls(document.body, state);
   }, 1000);
   
   // 5. Schedule periodic attempts to resume the context
@@ -156,7 +159,7 @@ export function setupAudioContextResumeHandling(state, tryReconnectMediaElements
     // Try for up to 2 minutes
     if (timeNow - state.audioContextInitTime < 2 * 60 * 1000) {
       if (state.audioContext && state.audioContext.state === 'suspended' && 
-          checkForActiveMedia(state)) {
+          AudioContextManager.checkForActiveMedia(state)) {
         console.log('Volume control: Attempting scheduled resume of AudioContext');
         resumeAudioContext();
       }
@@ -165,7 +168,7 @@ export function setupAudioContextResumeHandling(state, tryReconnectMediaElements
       clearInterval(state.resumeInterval);
     }
   }, 5000);
-}
+};
 
 /**
  * Find potential media controls in the DOM and attach click listeners
@@ -173,7 +176,7 @@ export function setupAudioContextResumeHandling(state, tryReconnectMediaElements
  * @param {HTMLElement} rootElement - The root element to search within
  * @param {Object} state - The global state object
  */
-export function findAndAttachToMediaControls(rootElement, state) {
+AudioContextManager.findAndAttachToMediaControls = function(rootElement, state) {
   if (!rootElement || !rootElement.querySelectorAll) return;
   
   // Common selectors for media controls across various sites
@@ -229,14 +232,14 @@ export function findAndAttachToMediaControls(rootElement, state) {
   } catch (e) {
     // Silently fail if there's an error in the selector or query
   }
-}
+};
 
 /**
  * Check if there's active media playing on the page
  * @param {Object} state - The global state object
  * @returns {boolean} True if active media is found
  */
-export function checkForActiveMedia(state) {
+AudioContextManager.checkForActiveMedia = function(state) {
   let hasActiveMedia = false;
   
   // Check our tracked audio elements
@@ -258,7 +261,7 @@ export function checkForActiveMedia(state) {
   }
   
   return hasActiveMedia;
-}
+};
 
 /**
  * Try to reconnect media elements if they were not properly connected
@@ -267,7 +270,7 @@ export function checkForActiveMedia(state) {
  * @param {Function} connectElementToGainNode - Function to connect elements to gain node
  * @param {Function} handleMediaElement - Function to handle media elements
  */
-export function tryReconnectMediaElements(state, connectElementToGainNode, handleMediaElement) {
+AudioContextManager.tryReconnectMediaElements = function(state, connectElementToGainNode, handleMediaElement) {
   // Reconnect existing elements that might not have connected properly
   state.audioElements.forEach(element => {
     if (!state.mediaSourceNodes.has(element)) {
@@ -283,4 +286,4 @@ export function tryReconnectMediaElements(state, connectElementToGainNode, handl
       handleMediaElement(element);
     }
   }
-}
+};

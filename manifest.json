@@ -28,6 +28,7 @@
     "matches": ["<all_urls>"],
     "js": [
       "module-loader.js",
+      "audio-context-manager.js",
       "content.js"
     ],
     "run_at": "document_start"

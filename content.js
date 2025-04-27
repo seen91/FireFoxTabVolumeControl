@@ -1,14 +1,5 @@
 // content.js - Controls volume for media elements in web pages
 
-// Import audio context management functions from dedicated module
-import { 
-  initializeAudioContext as initAudioContext,
-  setupAudioContextResumeHandling as setupResumeHandling,
-  findAndAttachToMediaControls as findMediaControls,
-  checkForActiveMedia,
-  tryReconnectMediaElements as reconnectElements
-} from './audio-context-manager.js';
-
 // Constants
 const DEFAULT_VOLUME = 1.0; // Default volume (100%)
 const YOUTUBE_CHECK_INTERVAL = 1000; // YouTube check interval in ms
@@ -225,7 +216,7 @@ function setupMutationObserver() {
     });
 
     if (newMediaFound && !state.audioContext) {
-      initAudioContext(state, connectElementToGainNode);
+      AudioContextManager.initializeAudioContext(state, connectElementToGainNode);
       checkForActiveAudio(); // Check if any are active
     }
   });
@@ -246,7 +237,7 @@ function findExistingMediaElements() {
   if (existingMedia.length > 0) {
     state.pageHasAudio = true;
     existingMedia.forEach(handleMediaElement);
-    initAudioContext(state, connectElementToGainNode);
+    AudioContextManager.initializeAudioContext(state, connectElementToGainNode);
     checkForActiveAudio(); // Check if any are active
   }
 }
@@ -286,7 +277,7 @@ function setupPlayEventListener() {
       if (!state.audioElements.has(event.target)) {
         handleMediaElement(event.target);
         if (!state.audioContext) {
-          initAudioContext(state, connectElementToGainNode);
+          AudioContextManager.initializeAudioContext(state, connectElementToGainNode);
         }
       }
       // A play event means active audio
@@ -338,7 +329,7 @@ function handleMediaElement(element) {
   // Add an event listener for when the media starts playing
   element.addEventListener('play', () => {
     if (!state.audioContext) {
-      initAudioContext(state, connectElementToGainNode);
+      AudioContextManager.initializeAudioContext(state, connectElementToGainNode);
     }
     state.pageHasActiveAudio = true;
     notifyHasAudio();
@@ -638,7 +629,7 @@ function findYouTubeVideo() {
   });
   
   if (foundVideo && !state.audioContext) {
-    initAudioContext(state, connectElementToGainNode);
+    AudioContextManager.initializeAudioContext(state, connectElementToGainNode);
   }
   
   // Try to access YouTube's API
@@ -689,5 +680,5 @@ function setYouTubeVolume(volumeLevel) {
  * due to suspended AudioContext
  */
 function tryReconnectMediaElements() {
-  reconnectElements(state, connectElementToGainNode, handleMediaElement);
+  AudioContextManager.tryReconnectMediaElements(state, connectElementToGainNode, handleMediaElement);
 }

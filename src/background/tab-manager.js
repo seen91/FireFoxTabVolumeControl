@@ -247,8 +247,9 @@ TabManager.getTabVolumeInfo = function(tab, state) {
  * @param {Object} state - Application state
  * @param {number} tabId - Tab ID
  * @param {string} action - Action to perform (add or remove)
+ * @param {Object} handlers - Object containing handler functions (optional, needed for processing)
  */
-TabManager.queueTabUpdate = function(state, tabId, action) {
+TabManager.queueTabUpdate = function(state, tabId, action, handlers) {
   // Store the action with the tab ID
   state.pendingUpdates.add({ tabId, action });
   
@@ -258,7 +259,7 @@ TabManager.queueTabUpdate = function(state, tabId, action) {
   }
   
   state.pendingUpdateTimer = setTimeout(() => {
-    TabManager.processPendingUpdates(state);
+    TabManager.processPendingUpdates(state, handlers);
   }, TabManager.UPDATE_DEBOUNCE_TIME);
 };
 

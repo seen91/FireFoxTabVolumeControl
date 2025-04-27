@@ -16,9 +16,30 @@ const VolumeControlManager = {};
 VolumeControlManager.setVolume = function(state, volumeLevel, applyVolumeToElement, setYouTubeVolume) {
   const DEFAULT_VOLUME = 1.0; // Default volume (100%)
   
-  // If volume is at default 100% (1.0), just update state and skip all processing
+  // If volume is at default 100% (1.0)
   if (volumeLevel === DEFAULT_VOLUME) {
-    // Only update the current volume in state if it has changed
+    // For 100% volume we need to:
+    // 1. Reset gain node to 1.0 if it exists
+    if (state.gainNode) {
+      try {
+        state.gainNode.gain.value = DEFAULT_VOLUME;
+      } catch (e) {
+        console.error('[Content] Error resetting gain node:', e);
+      }
+    }
+    
+    // 2. Apply 100% volume to all audio elements 
+    state.audioElements.forEach(element => {
+      applyVolumeToElement(element, DEFAULT_VOLUME);
+    });
+    
+    // 3. Handle site-specific cases
+    const hostname = window.location.hostname;
+    if (hostname.includes('youtube.com')) {
+      setYouTubeVolume(DEFAULT_VOLUME);
+    }
+    
+    // 4. Update state and notify background script
     if (state.currentVolume !== volumeLevel) {
       state.currentVolume = volumeLevel;
       
@@ -30,7 +51,7 @@ VolumeControlManager.setVolume = function(state, volumeLevel, applyVolumeToEleme
         console.warn("[Content] Error notifying background:", err);
       });
       
-      console.log("[Content] Volume set to default (100%), skipping all processing");
+      console.log("[Content] Volume set to default (100%)");
     }
     return;
   }

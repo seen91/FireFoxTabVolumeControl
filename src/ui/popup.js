@@ -102,7 +102,11 @@ document.addEventListener('DOMContentLoaded', function() {
   
   // Queue a tab update
   function queueTabUpdate(tabId, action) {
-    TabManager.queueTabUpdate(state, tabId, action);
+    // Pass the handlers object so it's available for processPendingUpdates
+    TabManager.queueTabUpdate(state, tabId, action, {
+      handleTabAudioStopped: handleTabAudioStopped,
+      handleTabAudioStartedAsync: handleTabAudioStartedAsync
+    });
   }
   
   // Process pending tab updates

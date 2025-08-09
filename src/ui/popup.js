@@ -12,6 +12,13 @@ function init() {
   refreshBtn = document.getElementById('refreshBtn');
   resetBtn = document.getElementById('resetBtn');
 
+  // Initialize theme manager
+  if (window.themeManager) {
+    window.themeManager.init().catch(error => {
+      console.warn('Theme manager initialization failed:', error);
+    });
+  }
+
   // Set up events
   masterVolumeSlider.addEventListener('input', (e) => {
     masterVolume = parseInt(e.target.value);

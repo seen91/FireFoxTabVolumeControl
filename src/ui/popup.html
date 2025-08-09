@@ -236,6 +236,124 @@
             color: #666;
             padding: 20px;
         }
+
+        /* Dark Theme Styles */
+        body.dark-theme {
+            background-color: #2b2a33;
+            color: #f9f9fa;
+        }
+
+        body.dark-theme .header {
+            color: #00ddff;
+        }
+
+        body.dark-theme .master-control {
+            background: #38383d;
+            border: 1px solid #4c4c4f;
+        }
+
+        body.dark-theme .master-title {
+            color: #00ddff;
+        }
+
+        body.dark-theme .volume-label {
+            color: #cfcfd8;
+        }
+
+        body.dark-theme .volume-slider {
+            background: #4c4c4f;
+        }
+
+        body.dark-theme .volume-slider::-webkit-slider-thumb {
+            background: #00ddff;
+            border: 2px solid #2b2a33;
+        }
+
+        body.dark-theme .volume-slider::-moz-range-thumb {
+            background: #00ddff;
+            border: 2px solid #2b2a33;
+        }
+
+        body.dark-theme .volume-display {
+            background: #00ddff;
+            color: #2b2a33;
+        }
+
+        body.dark-theme .preset-btn {
+            border: 1px solid #00ddff;
+            background: #38383d;
+            color: #00ddff;
+        }
+
+        body.dark-theme .preset-btn:hover {
+            background: #00ddff;
+            color: #2b2a33;
+        }
+
+        body.dark-theme .apply-all-btn {
+            background: #00ddff;
+            color: #2b2a33;
+        }
+
+        body.dark-theme .apply-all-btn:hover {
+            background: #00c4e6;
+        }
+
+        body.dark-theme .tab-item {
+            background: #38383d;
+            border: 1px solid #4c4c4f;
+        }
+
+        body.dark-theme .tab-title {
+            color: #f9f9fa;
+        }
+
+        body.dark-theme .volume-normal { 
+            background: #2d4a2d; 
+            color: #90ee90; 
+        }
+
+        body.dark-theme .volume-low { 
+            background: #4a2d1a; 
+            color: #ffa366; 
+        }
+
+        body.dark-theme .volume-high { 
+            background: #1a2d4a; 
+            color: #66b3ff; 
+        }
+
+        body.dark-theme .volume-muted { 
+            background: #4a1a1a; 
+            color: #ff6666; 
+        }
+
+        body.dark-theme .global-controls {
+            border-top: 1px solid #4c4c4f;
+        }
+
+        body.dark-theme .global-title {
+            color: #f9f9fa;
+        }
+
+        body.dark-theme .global-btn {
+            border: 1px solid #4c4c4f;
+            background: #38383d;
+            color: #f9f9fa;
+        }
+
+        body.dark-theme .global-btn:hover {
+            background: #4c4c4f;
+            border-color: #5c5c5f;
+        }
+
+        body.dark-theme .no-audio {
+            color: #cfcfd8;
+        }
+
+        body.dark-theme .loading {
+            color: #cfcfd8;
+        }
     </style>
 </head>
 <body>
@@ -272,6 +390,7 @@
         </div>
     </div>
 
+    <script src="themeManager.js"></script>
     <script src="popup.js"></script>
 </body>
 </html>

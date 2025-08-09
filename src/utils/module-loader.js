@@ -29,6 +29,51 @@ const MODULES = {
 };
 
 /**
+ * Wait for document.head to be available before executing callback
+ * @param {Function} callback - Function to execute when document.head is available
+ */
+function waitForDocumentHead(callback) {
+  // If document.head already exists, execute callback immediately
+  if (document.head) {
+    callback();
+    return;
+  }
+  
+  // If document.head doesn't exist, wait for it
+  const observer = new MutationObserver((mutations) => {
+    if (document.head) {
+      observer.disconnect();
+      callback();
+    }
+  });
+  
+  // Start observing the document for changes
+  if (document.documentElement) {
+    observer.observe(document.documentElement, {
+      childList: true,
+      subtree: true
+    });
+  } else {
+    // Fallback: wait for DOMContentLoaded if even documentElement doesn't exist
+    document.addEventListener('DOMContentLoaded', () => {
+      observer.disconnect();
+      if (document.head) {
+        callback();
+      } else {
+        // Final fallback: try again after a short delay
+        setTimeout(() => {
+          if (document.head) {
+            callback();
+          } else {
+            console.error('Volume Control: document.head still not available, cannot load module');
+          }
+        }, 100);
+      }
+    });
+  }
+}
+
+/**
  * Main entry point - load appropriate modules
  */
 function loadVolumeControlModules() {
@@ -150,14 +195,28 @@ function loadModule(path) {
       }
     };
     
-    document.head.appendChild(script);
+    // Ensure document.head exists before appending script
+    waitForDocumentHead(() => {
+      document.head.appendChild(script);
+    });
   } catch (error) {
     console.error('Volume Control: Error loading module', error);
   }
 }
 
-// Start the module loading process when the script runs
-loadVolumeControlModules();
+// Start the module loading process when the DOM is ready
+function initializeModuleLoader() {
+  // If DOM is already loaded, start immediately
+  if (document.readyState === 'loading') {
+    document.addEventListener('DOMContentLoaded', loadVolumeControlModules);
+  } else {
+    // DOM is already loaded, start module loading
+    loadVolumeControlModules();
+  }
+}
+
+// Initialize the module loader
+initializeModuleLoader();
 
 // Set a flag to indicate the module loader is active
 window.volumeControlModuleLoaderActive = true;

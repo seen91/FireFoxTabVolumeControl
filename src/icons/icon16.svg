@@ -1,10 +1,5 @@
-<?xml version="1.0" encoding="UTF-8" standalone="no"?>
 <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 16 16">
-  <!-- Speaker base shape -->
-  <path d="M3,6 H5 L8,3 V13 L5,10 H3 Z" fill="#2b2b2b"/>
-  
-  <!-- Sound waves - 3 levels -->
-  <path d="M10,6 Q11.5,8 10,10" fill="none" stroke="#2b2b2b" stroke-width="1" stroke-linecap="round"/>
-  <path d="M11,4.5 Q13.5,8 11,11.5" fill="none" stroke="#2b2b2b" stroke-width="1" stroke-linecap="round"/>
-  <path d="M12,3 Q15.5,8 12,13" fill="none" stroke="#2b2b2b" stroke-width="1" stroke-linecap="round"/>
+  <rect x="2" y="6" width="3" height="4" fill="#1a73e8"/>
+  <polygon points="5,6 9,3 9,13 5,10" fill="#1a73e8"/>
+  <path d="M10 5 Q12 6 12 8 Q12 10 10 11" stroke="#1a73e8" stroke-width="1.5" fill="none"/>
 </svg>

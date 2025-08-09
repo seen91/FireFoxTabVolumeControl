@@ -1,296 +1,277 @@
 <!DOCTYPE html>
-<html>
+<html lang="en">
 <head>
-  <meta charset="utf-8">
-  <style>
-    body {
-      width: 350px;
-      padding: 16px;
-      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, Ubuntu, Cantarell, 'Open Sans', 'Helvetica Neue', sans-serif;
-      background-color: #f9f9fa;
-      color: #0c0c0d;
-      margin: 0;
-    }
-    
-    h2 {
-      margin-top: 0;
-      color: #0c0c0d;
-      text-align: center;
-      font-size: 18px;
-      font-weight: 600;
-      border-bottom: 1px solid #ddd;
-      padding-bottom: 10px;
-      margin-bottom: 16px;
-    }
-    
-    .tabs-container {
-      max-height: 500px;
-      overflow-y: auto;
-      margin-bottom: 16px;
-    }
-    
-    .tab-item {
-      border: 1px solid #ddd;
-      border-radius: 4px;
-      margin-bottom: 12px;
-      background-color: white;
-      box-shadow: 0 1px 3px rgba(0,0,0,0.08);
-    }
-    
-    .tab-header {
-      display: flex;
-      align-items: center;
-      padding: 8px 12px;
-      background-color: #f0f0f4;
-      border-radius: 4px 4px 0 0;
-      cursor: pointer;
-      user-select: none;
-    }
-    
-    .tab-header:hover {
-      background-color: #e0e0e6;
-    }
-    
-    .tab-title {
-      flex-grow: 1;
-      white-space: nowrap;
-      overflow: hidden;
-      text-overflow: ellipsis;
-      max-width: 200px;
-      font-size: 13px;
-    }
-    
-    .tab-icon {
-      width: 16px;
-      height: 16px;
-      margin-right: 8px;
-    }
-    
-    .tab-volume-badge {
-      background-color: #0060df;
-      color: white;
-      padding: 2px 6px;
-      border-radius: 12px;
-      font-size: 12px;
-      margin-left: 8px;
-    }
-    
-    .tab-controls {
-      padding: 12px;
-      display: none;
-    }
-    
-    .tab-controls.active {
-      display: block;
-    }
-    
-    .volume-slider-container {
-      display: flex;
-      align-items: center;
-      margin-bottom: 8px;
-    }
-    
-    .volume-value {
-      display: inline-block;
-      width: 48px;
-      text-align: center;
-      font-weight: bold;
-      margin-left: 8px;
-      background-color: #0060df;
-      color: white;
-      padding: 2px 6px;
-      border-radius: 12px;
-      font-size: 12px;
-    }
-    
-    .slider-label {
-      font-size: 12px;
-      color: #737373;
-      width: 30px;
-      text-align: center;
-    }
-    
-    input[type="range"] {
-      -webkit-appearance: none;
-      flex-grow: 1;
-      height: 6px;
-      border-radius: 3px;
-      background: linear-gradient(to right, #0060df, #0a84ff);
-      outline: none;
-      margin: 0 10px;
-    }
-    
-    input[type="range"]::-webkit-slider-thumb {
-      -webkit-appearance: none;
-      width: 16px;
-      height: 16px;
-      border-radius: 50%;
-      background: white;
-      cursor: pointer;
-      border: 2px solid #0060df;
-      box-shadow: 0 2px 4px rgba(0, 96, 223, 0.3);
-    }
-    
-    input[type="range"]::-moz-range-thumb {
-      width: 16px;
-      height: 16px;
-      border-radius: 50%;
-      background: white;
-      cursor: pointer;
-      border: 2px solid #0060df;
-      box-shadow: 0 2px 4px rgba(0, 96, 223, 0.3);
-    }
-    
-    .tab-presets {
-      display: flex;
-      justify-content: space-between;
-      margin-top: 8px;
-    }
-    
-    .tab-presets button {
-      flex: 1;
-      margin: 0 4px;
-      font-size: 12px;
-      padding: 4px 0;
-      border-radius: 4px;
-    }
-    
-    button {
-      margin: 5px 0;
-      padding: 8px 16px;
-      background-color: #0060df;
-      color: white;
-      border: none;
-      border-radius: 4px;
-      cursor: pointer;
-      font-weight: 500;
-      transition: background-color 0.2s;
-    }
-    
-    button:hover {
-      background-color: #003eaa;
-    }
-    
-    button:active {
-      background-color: #002275;
-    }
-    
-    .global-controls {
-      margin-top: 16px;
-      padding-top: 16px;
-      border-top: 1px solid #ddd;
-    }
-    
-    .global-controls-title {
-      font-size: 16px;
-      font-weight: 600;
-      margin-bottom: 12px;
-    }
-    
-    .global-buttons {
-      display: flex;
-      justify-content: space-between;
-    }
-    
-    .global-buttons button {
-      flex: 1;
-      margin: 0 4px;
-    }
-    
-    .status-message {
-      font-size: 12px;
-      color: #737373;
-      text-align: center;
-      margin-top: 12px;
-      font-style: italic;
-    }
-    
-    .muted-badge {
-      background-color: #b1b1b3;
-      color: #0c0c0d;
-    }
-    
-    .amplified-badge {
-      background-color: #ff4f5e;
-    }
-    
-    .expand-icon {
-      width: 14px;
-      height: 14px;
-      transition: transform 0.2s ease;
-      margin-left: 4px;
-    }
-    
-    .expanded .expand-icon {
-      transform: rotate(180deg);
-    }
-    
-    .no-tabs-message {
-      text-align: center;
-      padding: 20px;
-      color: #737373;
-      font-style: italic;
-    }
-    
-    .master-volume {
-      margin-bottom: 16px;
-      background-color: white;
-      border-radius: 4px;
-      border: 1px solid #ddd;
-      padding: 12px;
-      box-shadow: 0 1px 3px rgba(0,0,0,0.08);
-    }
-    
-    .master-volume-title {
-      font-size: 14px;
-      font-weight: 600;
-      margin-bottom: 8px;
-      color: #0060df;
-    }
-  </style>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Tab Volume Control</title>
+    <style>
+        body {
+            width: 320px;
+            margin: 0;
+            padding: 16px;
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+            font-size: 14px;
+            background-color: #ffffff;
+            color: #333;
+        }
+
+        .header {
+            text-align: center;
+            margin-bottom: 16px;
+            font-size: 16px;
+            font-weight: 600;
+            color: #1a73e8;
+        }
+
+        .master-control {
+            background: #f8f9fa;
+            border: 1px solid #e1e4e8;
+            border-radius: 8px;
+            padding: 16px;
+            margin-bottom: 16px;
+        }
+
+        .master-title {
+            font-weight: 600;
+            color: #1a73e8;
+            margin-bottom: 12px;
+            font-size: 14px;
+        }
+
+        .volume-container {
+            margin-bottom: 12px;
+        }
+
+        .volume-slider-container {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            margin-bottom: 8px;
+        }
+
+        .volume-label {
+            font-size: 12px;
+            color: #666;
+            min-width: 24px;
+        }
+
+        .volume-slider {
+            flex: 1;
+            height: 6px;
+            border-radius: 3px;
+            background: #e1e4e8;
+            outline: none;
+            -webkit-appearance: none;
+            appearance: none;
+        }
+
+        .volume-slider::-webkit-slider-thumb {
+            -webkit-appearance: none;
+            appearance: none;
+            width: 18px;
+            height: 18px;
+            border-radius: 50%;
+            background: #1a73e8;
+            cursor: pointer;
+            border: 2px solid #fff;
+            box-shadow: 0 2px 4px rgba(0,0,0,0.2);
+        }
+
+        .volume-slider::-moz-range-thumb {
+            width: 18px;
+            height: 18px;
+            border-radius: 50%;
+            background: #1a73e8;
+            cursor: pointer;
+            border: 2px solid #fff;
+            box-shadow: 0 2px 4px rgba(0,0,0,0.2);
+        }
+
+        .volume-display {
+            min-width: 45px;
+            padding: 4px 8px;
+            background: #1a73e8;
+            color: white;
+            border-radius: 12px;
+            font-size: 12px;
+            font-weight: 600;
+            text-align: center;
+        }
+
+        .preset-buttons {
+            display: flex;
+            gap: 4px;
+            margin-bottom: 8px;
+        }
+
+        .preset-btn {
+            flex: 1;
+            padding: 6px 8px;
+            border: 1px solid #1a73e8;
+            background: white;
+            color: #1a73e8;
+            border-radius: 4px;
+            cursor: pointer;
+            font-size: 11px;
+            font-weight: 500;
+            transition: all 0.2s;
+        }
+
+        .preset-btn:hover {
+            background: #1a73e8;
+            color: white;
+        }
+
+        .apply-all-btn {
+            width: 100%;
+            padding: 8px;
+            background: #1a73e8;
+            color: white;
+            border: none;
+            border-radius: 4px;
+            cursor: pointer;
+            font-size: 12px;
+            font-weight: 600;
+            transition: background-color 0.2s;
+        }
+
+        .apply-all-btn:hover {
+            background: #1557b0;
+        }
+
+        .tab-list {
+            max-height: 300px;
+            overflow-y: auto;
+        }
+
+        .tab-item {
+            background: white;
+            border: 1px solid #e1e4e8;
+            border-radius: 8px;
+            padding: 12px;
+            margin-bottom: 8px;
+            position: relative;
+        }
+
+        .tab-header {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            margin-bottom: 8px;
+        }
+
+        .tab-favicon {
+            width: 16px;
+            height: 16px;
+            border-radius: 2px;
+        }
+
+        .tab-title {
+            flex: 1;
+            font-size: 12px;
+            font-weight: 500;
+            color: #333;
+            overflow: hidden;
+            text-overflow: ellipsis;
+            white-space: nowrap;
+        }
+
+        .tab-volume-display {
+            font-size: 11px;
+            font-weight: 600;
+            padding: 2px 6px;
+            border-radius: 8px;
+            min-width: 32px;
+            text-align: center;
+        }
+
+        .volume-normal { background: #e8f5e8; color: #2d5a2d; }
+        .volume-low { background: #fff3e0; color: #d84315; }
+        .volume-high { background: #e3f2fd; color: #1976d2; }
+        .volume-muted { background: #ffebee; color: #d32f2f; }
+
+        .global-controls {
+            border-top: 1px solid #e1e4e8;
+            padding-top: 16px;
+            margin-top: 16px;
+        }
+
+        .global-title {
+            font-weight: 600;
+            margin-bottom: 12px;
+            color: #333;
+        }
+
+        .global-buttons {
+            display: flex;
+            gap: 8px;
+        }
+
+        .global-btn {
+            flex: 1;
+            padding: 8px 12px;
+            border: 1px solid #e1e4e8;
+            background: white;
+            color: #333;
+            border-radius: 4px;
+            cursor: pointer;
+            font-size: 12px;
+            transition: all 0.2s;
+        }
+
+        .global-btn:hover {
+            background: #f5f5f5;
+            border-color: #ccc;
+        }
+
+        .no-audio {
+            text-align: center;
+            color: #666;
+            font-style: italic;
+            padding: 20px;
+        }
+
+        .loading {
+            text-align: center;
+            color: #666;
+            padding: 20px;
+        }
+    </style>
 </head>
 <body>
-  <h2>Tab Volume Control</h2>
-  
-  <div class="master-volume">
-    <div class="master-volume-title">Master Volume Control</div>
-    <div class="volume-slider-container">
-      <span class="slider-label">0%</span>
-      <input type="range" id="master-volume-slider" min="0" max="500" value="100">
-      <span class="slider-label">500%</span>
-      <span id="master-volume-value" class="volume-value">100%</span>
+    <div class="header">Tab Volume Control</div>
+
+    <div class="master-control">
+        <div class="master-title">Master Volume Control</div>
+        <div class="volume-container">
+            <div class="volume-slider-container">
+                <span class="volume-label">0%</span>
+                <input type="range" id="masterVolumeSlider" class="volume-slider" min="0" max="500" value="100">
+                <span class="volume-label">500%</span>
+                <span id="masterVolumeDisplay" class="volume-display">100%</span>
+            </div>
+            <div class="preset-buttons">
+                <button class="preset-btn" data-volume="0">Mute</button>
+                <button class="preset-btn" data-volume="100">100%</button>
+                <button class="preset-btn" data-volume="200">200%</button>
+                <button class="preset-btn" data-volume="500">500%</button>
+            </div>
+            <button id="applyToAllBtn" class="apply-all-btn">Apply to All Tabs</button>
+        </div>
     </div>
-    <div class="tab-presets">
-      <button id="master-preset-0">Mute</button>
-      <button id="master-preset-100">100%</button>
-      <button id="master-preset-200">200%</button>
-      <button id="master-preset-500">500%</button>
+
+    <div id="tabList" class="tab-list">
+        <div class="loading">Loading audio tabs...</div>
     </div>
-    <button id="apply-master-volume" style="width: 100%; margin-top: 8px;">Apply to All Tabs</button>
-  </div>
-  
-  <div class="tabs-container" id="tabs-container">
-    <!-- Tab items will be populated here by JavaScript -->
-    <div class="no-tabs-message" id="no-tabs-message">
-      No tabs with audio detected
+
+    <div class="global-controls">
+        <div class="global-title">Global Settings</div>
+        <div class="global-buttons">
+            <button id="refreshBtn" class="global-btn">Refresh Tab List</button>
+            <button id="resetBtn" class="global-btn">Reset All Tabs</button>
+        </div>
     </div>
-  </div>
-  
-  <div class="global-controls">
-    <div class="global-controls-title">Global Settings</div>
-    <div class="global-buttons">
-      <button id="refresh-tabs">Refresh Tab List</button>
-      <button id="reset-all">Reset All Tabs</button>
-    </div>
-  </div>
-  
-  <div class="status-message" id="status-message"></div>
-  
-  <!-- Load modules in appropriate order -->
-  <script src="ui-manager.js"></script>
-  <script src="../background/tab-manager.js"></script>
-  <script src="../core/volume-controller.js"></script>
-  <script src="../utils/event-manager.js"></script>
-  <script src="popup.js"></script>
+
+    <script src="popup.js"></script>
 </body>
 </html>

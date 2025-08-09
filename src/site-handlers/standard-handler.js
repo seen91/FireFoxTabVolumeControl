@@ -231,11 +231,12 @@ function applyStandardVolumeToElement(element, volumeLevel) {
 function setStandardVolume(volumeLevel) {
   stdCurrentVolume = volumeLevel;
   
-  // Notify the background script
-  browser.runtime.sendMessage({
+  // Notify the content script via window messaging
+  window.postMessage({
+    source: "standard-handler",
     action: "volumeChanged",
     volume: volumeLevel
-  });
+  }, "*");
 
   // Apply volume using the gainNode if available (for amplification)
   if (stdGainNode) {
@@ -277,15 +278,30 @@ function hookStandardMediaElementCreation() {
 
 // Setup message listener for standard handling
 function setupStandardMessageListener() {
-  browser.runtime.onMessage.addListener((message) => {
-    if (message.action === "setVolume") {
-      setStandardVolume(message.volume);
-      return Promise.resolve({ success: true });
-    } else if (message.action === "getVolume") {
-      return Promise.resolve({
+  // Listen for messages from the content script via window messaging
+  window.addEventListener('message', (event) => {
+    // Only accept messages from the same window
+    if (event.source !== window) return;
+    
+    const data = event.data;
+    if (!data || data.source !== 'volume-control-content') return;
+    
+    if (data.action === "setVolume") {
+      setStandardVolume(data.volume);
+      // Send response back via window messaging
+      window.postMessage({
+        source: "standard-handler",
+        action: "volumeResponse",
         success: true,
-        volume: stdCurrentVolume
-      });
+        requestId: data.requestId
+      }, "*");
+    } else if (data.action === "getVolume") {
+      window.postMessage({
+        source: "standard-handler",
+        action: "volumeResponse",
+        volume: stdCurrentVolume,
+        requestId: data.requestId
+      }, "*");
     }
-  });
+  }, false);
 }

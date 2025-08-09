@@ -300,12 +300,56 @@ function applyVolumeToElement(element, volumeLevel) {
  * @param {number} volumeLevel - Volume level (0.0 to 5.0)
  */
 function setVolume(volumeLevel) {
-  VolumeControlManager.setVolume(
-    state, 
-    volumeLevel, 
-    MediaElementManager.applyVolumeToElement, 
-    setYouTubeVolume
-  );
+  const hostname = window.location.hostname;
+  
+  // For 9GAG, use direct handling (no site handler needed)
+  if (hostname.includes('9gag.com')) {
+    VolumeControlManager.setVolume(
+      state, 
+      volumeLevel, 
+      MediaElementManager.applyVolumeToElement, 
+      setYouTubeVolume
+    );
+    return;
+  }
+  
+  // For other sites, try to communicate with site handlers first
+  if (hostname.includes('reddit.com') || hostname.includes('youtube.com') || !hostname.includes('9gag.com')) {
+    // Try to send message to site handler
+    MessagingManager.sendToSiteHandler('setVolume', { volume: volumeLevel })
+      .then(response => {
+        console.log('[Content] Site handler responded:', response);
+        // Update local state
+        state.currentVolume = volumeLevel;
+        
+        // Notify background script about volume change
+        MessagingManager.notifyHasAudio(state.pageHasActiveAudio);
+        browser.runtime.sendMessage({
+          action: "volumeChanged",
+          volume: volumeLevel
+        }).catch(() => {
+          // Ignore errors
+        });
+      })
+      .catch(error => {
+        console.log('[Content] Site handler not available, using fallback:', error.message);
+        // Fallback to standard volume control
+        VolumeControlManager.setVolume(
+          state, 
+          volumeLevel, 
+          MediaElementManager.applyVolumeToElement, 
+          setYouTubeVolume
+        );
+      });
+  } else {
+    // Standard fallback
+    VolumeControlManager.setVolume(
+      state, 
+      volumeLevel, 
+      MediaElementManager.applyVolumeToElement, 
+      setYouTubeVolume
+    );
+  }
 }
 
 /**

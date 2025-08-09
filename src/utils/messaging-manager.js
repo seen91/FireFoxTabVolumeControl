@@ -60,14 +60,33 @@ MessagingManager.setupWindowMessageListener = function(state, notifyHasAudio) {
       // For 9GAG, we handle everything directly in content.js
       if (data.source === "9gag-handler") {
         console.log("[MessagingManager] Received message from 9GAG handler, but using direct handling");
+        if (data.action === 'notifyAudio') {
+          state.pageHasAudio = true;
+          state.pageHasActiveAudio = data.hasActiveAudio;
+          notifyHasAudio();
+        }
         return;
       }
       
-      // Handle other site handler messages normally
+      // Handle other site handler messages
       if (data.action === 'notifyAudio') {
         state.pageHasAudio = true;
         state.pageHasActiveAudio = data.hasActiveAudio;
         notifyHasAudio();
+      } else if (data.action === 'volumeChanged') {
+        // Update the current volume in state and notify background
+        state.currentVolume = data.volume;
+        MessagingManager.notifyHasAudio(state.pageHasActiveAudio);
+        
+        // Also send volume change notification to background
+        if (typeof browser !== 'undefined' && browser.runtime) {
+          browser.runtime.sendMessage({
+            action: "volumeChanged",
+            volume: data.volume
+          }).catch(() => {
+            // Ignore errors
+          });
+        }
       }
     }
   };
@@ -90,5 +109,49 @@ MessagingManager.notifyHasAudio = function(hasActiveAudio) {
     hasActiveAudio: hasActiveAudio
   }).catch(() => {
     // Ignore errors
+  });
+};
+
+/**
+ * Send a message to site handlers via window messaging
+ * @param {string} action - The action to perform
+ * @param {Object} data - Additional data to send
+ * @returns {Promise} - Promise that resolves with the response
+ */
+MessagingManager.sendToSiteHandler = function(action, data = {}) {
+  return new Promise((resolve, reject) => {
+    const requestId = `req_${Date.now()}_${Math.random()}`;
+    
+    // Set up listener for response
+    const responseHandler = (event) => {
+      if (event.source !== window) return;
+      
+      const responseData = event.data;
+      if (responseData && 
+          responseData.requestId === requestId &&
+          (responseData.source === 'reddit-handler' || 
+           responseData.source === 'youtube-handler' || 
+           responseData.source === 'standard-handler')) {
+        
+        window.removeEventListener('message', responseHandler);
+        resolve(responseData);
+      }
+    };
+    
+    window.addEventListener('message', responseHandler);
+    
+    // Send the message
+    window.postMessage({
+      source: 'volume-control-content',
+      action: action,
+      requestId: requestId,
+      ...data
+    }, "*");
+    
+    // Set timeout to avoid hanging
+    setTimeout(() => {
+      window.removeEventListener('message', responseHandler);
+      reject(new Error('Site handler response timeout'));
+    }, 5000);
   });
 };

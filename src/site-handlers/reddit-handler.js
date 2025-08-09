@@ -323,11 +323,12 @@ function addRedditControlsHandlers(element) {
 function setRedditVolume(volumeLevel) {
   redditState.currentVolume = volumeLevel;
   
-  // Notify the background script
-  browser.runtime.sendMessage({
+  // Notify the content script via window messaging
+  window.postMessage({
+    source: "reddit-handler",
     action: "volumeChanged",
     volume: volumeLevel
-  });
+  }, "*");
   
   // Apply using gain node for amplification
   if (redditState.gainNode) {
@@ -362,30 +363,50 @@ function reapplyRedditVolume() {
  * Set up message listener for Reddit-specific handling
  */
 function setupRedditMessageListener() {
-  browser.runtime.onMessage.addListener((message, sender, sendResponse) => {
-    if (message.action === "setVolume") {
-      setRedditVolume(message.volume);
-      sendResponse({success: true});
-      return true;
-    } else if (message.action === "getVolume") {
-      sendResponse({volume: redditState.currentVolume});
-      return true;
-    } else if (message.action === "checkForAudio") {
-      sendResponse({hasAudio: redditState.pageHasAudio});
-      return true;
+  // Listen for messages from the content script via window messaging
+  window.addEventListener('message', (event) => {
+    // Only accept messages from the same window
+    if (event.source !== window) return;
+    
+    const data = event.data;
+    if (!data || data.source !== 'volume-control-content') return;
+    
+    if (data.action === "setVolume") {
+      setRedditVolume(data.volume);
+      // Send response back via window messaging
+      window.postMessage({
+        source: "reddit-handler",
+        action: "volumeResponse",
+        success: true,
+        requestId: data.requestId
+      }, "*");
+    } else if (data.action === "getVolume") {
+      window.postMessage({
+        source: "reddit-handler",
+        action: "volumeResponse",
+        volume: redditState.currentVolume,
+        requestId: data.requestId
+      }, "*");
+    } else if (data.action === "checkForAudio") {
+      window.postMessage({
+        source: "reddit-handler",
+        action: "audioCheckResponse",
+        hasAudio: redditState.pageHasAudio,
+        requestId: data.requestId
+      }, "*");
     }
-  });
+  }, false);
 }
 
 /**
- * Notify background script that this page has audio
+ * Notify content script that this page has audio
  */
 function notifyRedditHasAudio() {
-  browser.runtime.sendMessage({
-    action: "notifyAudio"
-  }).catch(() => {
-    // Ignore errors
-  });
+  window.postMessage({
+    source: "reddit-handler",
+    action: "notifyAudio",
+    hasActiveAudio: redditState.pageHasAudio
+  }, "*");
 }
 
 // Start Reddit handler

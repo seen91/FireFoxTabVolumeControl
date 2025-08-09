@@ -202,11 +202,12 @@ function applyYouTubeVolumeToElement(element, volumeLevel) {
 function setYouTubeVolume(volumeLevel) {
   ytState.currentVolume = volumeLevel;
   
-  // Notify background script about volume change
-  browser.runtime.sendMessage({
+  // Notify content script via window messaging
+  window.postMessage({
+    source: "youtube-handler",
     action: "volumeChanged",
     volume: volumeLevel
-  });
+  }, "*");
   
   // Apply with gain node for amplification
   if (ytState.gainNode) {
@@ -350,15 +351,31 @@ function hookYouTubeAPIs() {
  * Set up message listener for extension communication
  */
 function setupYouTubeMessageListener() {
-  browser.runtime.onMessage.addListener((message, sender, sendResponse) => {
-    if (message.action === "setVolume") {
-      setYouTubeVolume(message.volume);
-      sendResponse({success: true});
-      return true;
-    } else if (message.action === "getVolume") {
-      sendResponse({volume: ytState.currentVolume});
-      return true;
-    } else if (message.action === "checkForAudio") {
+  // Listen for messages from the content script via window messaging
+  window.addEventListener('message', (event) => {
+    // Only accept messages from the same window
+    if (event.source !== window) return;
+    
+    const data = event.data;
+    if (!data || data.source !== 'volume-control-content') return;
+    
+    if (data.action === "setVolume") {
+      setYouTubeVolume(data.volume);
+      // Send response back via window messaging
+      window.postMessage({
+        source: "youtube-handler",
+        action: "volumeResponse",
+        success: true,
+        requestId: data.requestId
+      }, "*");
+    } else if (data.action === "getVolume") {
+      window.postMessage({
+        source: "youtube-handler",
+        action: "volumeResponse",
+        volume: ytState.currentVolume,
+        requestId: data.requestId
+      }, "*");
+    } else if (data.action === "checkForAudio") {
       // Check if any videos are playing
       let hasActiveAudio = false;
       ytState.audioElements.forEach(video => {
@@ -367,26 +384,27 @@ function setupYouTubeMessageListener() {
         }
       });
       
-      sendResponse({
+      window.postMessage({
+        source: "youtube-handler",
+        action: "audioCheckResponse",
         hasAudio: ytState.audioElements.size > 0,
         hasMediaElements: ytState.audioElements.size > 0,
-        hasActiveAudio: hasActiveAudio
-      });
-      return true;
+        hasActiveAudio: hasActiveAudio,
+        requestId: data.requestId
+      }, "*");
     }
-  });
+  }, false);
 }
 
 /**
- * Notify background script that this page has audio
+ * Notify content script that this page has audio
  */
 function notifyYouTubeHasAudio() {
-  browser.runtime.sendMessage({
+  window.postMessage({
+    source: "youtube-handler",
     action: "notifyAudio",
     hasActiveAudio: true
-  }).catch(() => {
-    // Ignore errors
-  });
+  }, "*");
 }
 
 /**

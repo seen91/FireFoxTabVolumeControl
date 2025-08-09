@@ -380,9 +380,6 @@ function initYouTubeVolumeControl() {
   
   // Set up a recurring check for YouTube videos
   state.youtubeCheckerInterval = setInterval(findYouTubeVideo, YOUTUBE_CHECK_INTERVAL);
-  
-  // Set up message listener
-  setupMessageListener();
 }
 
 function findYouTubeVideo() {

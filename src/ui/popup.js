@@ -7,6 +7,7 @@
 let masterVolumeSlider, masterVolumeDisplay, tabList, applyToAllBtn, refreshBtn, resetBtn;
 let audioTabs = [];
 let masterVolume = 100;
+let justAppliedMasterVolume = false;
 
 /**
  * Initialize popup interface
@@ -85,8 +86,25 @@ function setMasterVolume(volume) {
  * Apply master volume to all audio tabs
  */
 function applyMasterVolumeToAllTabs() {
+  // Set flag to prevent unwanted refreshes from overriding our UI changes
+  justAppliedMasterVolume = true;
+  
+  // Update local state immediately for better UX
+  audioTabs.forEach(tab => {
+    tab.volume = masterVolume;
+  });
+  
+  // Update the UI immediately
+  updateTabListDisplay();
+  
+  // Send to background
   browser.runtime.sendMessage({ action: 'applyToAllTabs', volume: masterVolume })
-    .then(() => setTimeout(loadAudioTabs, 500))
+    .then(() => {
+      // Clear the flag after a delay to allow normal refreshes
+      setTimeout(() => {
+        justAppliedMasterVolume = false;
+      }, 1000);
+    })
     .catch(console.error);
 }
 
@@ -106,13 +124,21 @@ function resetAllTabs() {
  * Load audio tabs from background script
  */
 function loadAudioTabs() {
+  // If we just applied master volume, don't reload to prevent UI flicker
+  if (justAppliedMasterVolume) {
+    return;
+  }
+  
   tabList.innerHTML = '<div class="loading">Loading audio tabs...</div>';
   
   browser.runtime.sendMessage({ action: 'getTabAudioStatus' })
     .then(response => {
       if (response?.tabs) {
         audioTabs = response.tabs;
-        renderTabList();
+        // Query each tab for its actual current volume to ensure accuracy
+        syncTabVolumes().then(() => {
+          renderTabList();
+        });
       } else {
         showNoAudioMessage();
       }
@@ -121,6 +147,25 @@ function loadAudioTabs() {
       console.error('Failed to load audio tabs:', error);
       showNoAudioMessage();
     });
+}
+
+/**
+ * Sync tab volumes by querying content scripts directly
+ */
+async function syncTabVolumes() {
+  const volumePromises = audioTabs.map(async (tab) => {
+    try {
+      const response = await browser.tabs.sendMessage(tab.id, { action: 'getVolume' });
+      if (response && response.volume !== undefined) {
+        tab.volume = response.volume;
+      }
+    } catch (error) {
+      // Content script might not be ready or tab might not have audio anymore
+      // Keep the volume from background script
+    }
+  });
+  
+  await Promise.all(volumePromises);
 }
 
 /**
@@ -135,6 +180,32 @@ function renderTabList() {
   tabList.innerHTML = '';
   audioTabs.forEach(tab => {
     tabList.appendChild(createTabElement(tab));
+  });
+}
+
+/**
+ * Update the existing tab list display with current volume values
+ */
+function updateTabListDisplay() {
+  const tabItems = tabList.querySelectorAll('.tab-item');
+  
+  tabItems.forEach(tabDiv => {
+    const slider = tabDiv.querySelector('.volume-slider');
+    const tabVolumeDisplay = tabDiv.querySelector('.tab-volume-display');
+    
+    if (slider && tabVolumeDisplay) {
+      const tabId = parseInt(slider.getAttribute('data-tab-id'));
+      const tab = audioTabs.find(t => t.id === tabId);
+      
+      if (tab) {
+        // Update slider value
+        slider.value = tab.volume;
+        
+        // Update display
+        tabVolumeDisplay.textContent = `${tab.volume}%`;
+        tabVolumeDisplay.className = `tab-volume-display ${getVolumeClass(tab.volume)}`;
+      }
+    }
   });
 }
 

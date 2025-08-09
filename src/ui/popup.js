@@ -180,7 +180,7 @@ function showNoAudioMessage() {
   tabList.innerHTML = `
     <div class="no-audio">
       No tabs with audio detected.<br>
-      Play some media and click "Refresh Tab List".
+      Start playing media to see volume controls.
     </div>
   `;
 }

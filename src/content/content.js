@@ -82,17 +82,26 @@ function registerMediaElement(element) {
     
     element.addEventListener('play', () => {
       applyVolumeToElement(element, currentVolume);
-      browser.runtime.sendMessage({ action: 'notifyAudio' }).catch(() => {});
     });
     
-    element.addEventListener('ended', () => mediaElements.delete(element));
-    browser.runtime.sendMessage({ action: 'notifyAudio' }).catch(() => {});
+    element.addEventListener('ended', () => {
+      mediaElements.delete(element);
+    });
+    
+    element.addEventListener('error', () => {
+      mediaElements.delete(element);
+    });
   }
 }
 
 // Scan for media elements
 function scanForMediaElements() {
-  document.querySelectorAll('audio, video').forEach(registerMediaElement);
+  const existingElements = document.querySelectorAll('audio, video');
+  
+  // Register any new elements
+  existingElements.forEach(registerMediaElement);
+  
+  // Call site-specific detection if available
   if (typeof window.detectSiteAudio === 'function') {
     try { window.detectSiteAudio(); } catch (e) {}
   }
@@ -103,6 +112,7 @@ function setupObservers() {
   // Watch for new media elements
   new MutationObserver((mutations) => {
     mutations.forEach((mutation) => {
+      // Handle added nodes
       mutation.addedNodes.forEach((node) => {
         if (node.nodeType === Node.ELEMENT_NODE) {
           if (node.tagName === 'AUDIO' || node.tagName === 'VIDEO') {
@@ -110,6 +120,20 @@ function setupObservers() {
           }
           if (node.querySelectorAll) {
             node.querySelectorAll('audio, video').forEach(registerMediaElement);
+          }
+        }
+      });
+      
+      // Handle removed nodes - clean up media elements
+      mutation.removedNodes.forEach((node) => {
+        if (node.nodeType === Node.ELEMENT_NODE) {
+          if (node.tagName === 'AUDIO' || node.tagName === 'VIDEO') {
+            mediaElements.delete(node);
+          }
+          if (node.querySelectorAll) {
+            node.querySelectorAll('audio, video').forEach(element => {
+              mediaElements.delete(element);
+            });
           }
         }
       });
@@ -138,7 +162,18 @@ browser.runtime.onMessage.addListener((message, sender, sendResponse) => {
       break;
     case 'checkForAudio':
       scanForMediaElements();
-      sendResponse({ success: true });
+      // Clean up orphaned elements
+      const elementsToRemove = [];
+      mediaElements.forEach(element => {
+        if (!document.contains(element)) {
+          elementsToRemove.push(element);
+        }
+      });
+      elementsToRemove.forEach(element => {
+        mediaElements.delete(element);
+      });
+      // Return whether we have any media elements
+      sendResponse({ hasAudio: mediaElements.size > 0 });
       break;
   }
 });
@@ -147,6 +182,8 @@ browser.runtime.onMessage.addListener((message, sender, sendResponse) => {
 function initialize() {
   setupObservers();
   setTimeout(scanForMediaElements, 1000);
+  
+  // Periodic scan for new media elements
   setInterval(scanForMediaElements, 5000);
 }
 

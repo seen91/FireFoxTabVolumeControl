@@ -3,8 +3,32 @@ let currentVolume = 100;
 let audioContext = null;
 let gainNode = null;
 let mediaElements = new Set();
+let connectedElements = new Set();
+let blockedSites = new Set();
 
-// Initialize Web Audio API for amplification
+// Constants
+const VOLUME_MAX = 100;
+const VOLUME_MIN = 0;
+const VOLUME_AMPLIFICATION_THRESHOLD = 100;
+const VOLUME_NATIVE_MAX = 1.0;
+const SCAN_INTERVAL = 5000;
+const INITIAL_SCAN_DELAY = 1000;
+const ADDITIONAL_SELECTORS = [
+  '[class*="video"]',
+  '[class*="Video"]', 
+  '[class*="player"]',
+  '[class*="Player"]',
+  '[class*="media"]',
+  '[class*="Media"]',
+  '[data-testid*="video"]',
+  '[data-testid*="media"]',
+  '[data-testid*="player"]'
+];
+
+/**
+ * Initialize Web Audio API for amplification
+ * @returns {boolean} True if initialization was successful
+ */
 function initAudioContext() {
   if (!audioContext) {
     try {
@@ -20,29 +44,112 @@ function initAudioContext() {
   return true;
 }
 
+/**
+ * Check if current site is blocked from using Web Audio API
+ * @returns {boolean} True if site is blocked
+ */
+function isSiteBlocked() {
+  const hostname = window.location.hostname.toLowerCase();
+  return blockedSites.has(hostname);
+}
+
+/**
+ * Mark current site as blocked from Web Audio API
+ */
+function markSiteAsBlocked() {
+  const hostname = window.location.hostname.toLowerCase();
+  blockedSites.add(hostname);
+}
+
+/**
+ * Check if media element is served from a different origin
+ * @param {HTMLMediaElement} element - Audio or video element to check
+ * @returns {boolean} True if element is cross-origin
+ */
+function isCrossOriginElement(element) {
+  const sources = [
+    element.src,
+    element.currentSrc,
+    element.querySelector('source')?.src
+  ].filter(Boolean);
+  
+  if (sources.length === 0) return false;
+  
+  try {
+    const pageOrigin = window.location.origin;
+    return sources.some(src => new URL(src).origin !== pageOrigin);
+  } catch (e) {
+    return true; // Assume cross-origin if URL parsing fails
+  }
+}
+
+/**
+ * Check if amplification should be blocked for this element/site
+ * @param {HTMLMediaElement} element - Audio or video element to check
+ * @returns {boolean} True if amplification should be blocked
+ */
+function shouldBlockAmplification(element) {
+  if (isSiteBlocked()) return true;
+  
+  if (isCrossOriginElement(element)) {
+    markSiteAsBlocked();
+    return true;
+  }
+  
+  return false;
+}
+
+// Try to connect element to Web Audio API, detect if blocked
+function tryConnectToAudioContext(element) {
+  if (!audioContext || !gainNode) return false;
+  
+  // Check if already connected
+  if (connectedElements.has(element)) return true;
+  
+  try {
+    const source = audioContext.createMediaElementSource(element);
+    source.connect(gainNode);
+    connectedElements.add(element);
+    
+    // Store reference to source for cleanup
+    element._audioSource = source;
+    return true;
+  } catch (e) {
+    // Site blocks Web Audio API connection - mark as blocked
+    markSiteAsBlocked();
+    return false;
+  }
+}
+
 // Apply volume to media element
 function applyVolumeToElement(element, volume) {
-  // For volume reduction (0-100%), use HTML5 volume property
-  if (volume <= 100) {
-    element.volume = volume / 100;
-  } else {
-    // For amplification (>100%), set to max and use gain node
-    element.volume = 1.0;
-    
-    // Initialize audio context for amplification if needed
-    if (!audioContext && volume > 100) {
-      initAudioContext();
-    }
-    
-    // Connect element to gain node for amplification
-    if (audioContext && gainNode && volume > 100) {
-      try {
-        const source = audioContext.createMediaElementSource(element);
-        source.connect(gainNode);
-      } catch (e) {
-        // Element might already be connected or have issues
-        console.warn('Could not connect element to audio context:', e);
-      }
+  // For volume reduction (0-100%), always use HTML5 volume property
+  if (volume <= VOLUME_AMPLIFICATION_THRESHOLD) {
+    element.volume = volume / VOLUME_MAX;
+    return;
+  }
+  
+  // For amplification (>100%), check if we should block this element/site
+  element.volume = VOLUME_NATIVE_MAX;
+  
+  // Early check for cross-origin or blocked sites
+  if (shouldBlockAmplification(element)) {
+    // Don't attempt Web Audio API - element is cross-origin or site is blocked
+    return;
+  }
+  
+  // Initialize audio context if needed
+  if (!audioContext && !initAudioContext()) {
+    markSiteAsBlocked();
+    return;
+  }
+  
+  // Try to connect THIS specific element to gain node
+  if (audioContext && gainNode) {
+    const connected = tryConnectToAudioContext(element);
+    if (!connected) {
+      // If connection failed, this site doesn't support Web Audio API properly
+      return;
     }
   }
 }
@@ -50,19 +157,44 @@ function applyVolumeToElement(element, volume) {
 // Set volume for all media elements
 function setVolume(volume) {
   currentVolume = volume;
+  
+  // Apply volume to all registered media elements
   mediaElements.forEach(element => {
     if (element && !element.paused) {
       applyVolumeToElement(element, volume);
     }
   });
   
-  // Update gain node for amplification
-  if (gainNode) gainNode.gain.value = volume / 100;
+  // Only update gain node if we have successfully connected elements and site isn't blocked
+  if (gainNode && !isSiteBlocked() && connectedElements.size > 0) {
+    gainNode.gain.value = volume / VOLUME_MAX;
+  }
   
   // Call site-specific handler if available
   if (typeof window.setSiteVolume === 'function') {
     try { window.setSiteVolume(volume); } catch (e) {}
   }
+}
+
+// Check if amplification is available on this site
+function isAmplificationAvailable() {
+  return !isSiteBlocked() && (audioContext || initAudioContext());
+}
+
+// Cleanup utilities
+function cleanupAudioSource(element) {
+  if (element._audioSource) {
+    try {
+      element._audioSource.disconnect();
+    } catch (e) {}
+    delete element._audioSource;
+  }
+}
+
+function cleanupMediaElement(element) {
+  cleanupAudioSource(element);
+  mediaElements.delete(element);
+  connectedElements.delete(element);
 }
 
 // Register and track media elements
@@ -76,11 +208,11 @@ function registerMediaElement(element) {
     });
     
     element.addEventListener('ended', () => {
-      mediaElements.delete(element);
+      cleanupMediaElement(element);
     });
     
     element.addEventListener('error', () => {
-      mediaElements.delete(element);
+      cleanupMediaElement(element);
     });
   }
 }
@@ -93,19 +225,7 @@ function scanForMediaElements() {
   existingElements.forEach(registerMediaElement);
   
   // More aggressive scanning for sites that might hide audio/video elements
-  const additionalSelectors = [
-    '[class*="video"]',
-    '[class*="Video"]', 
-    '[class*="player"]',
-    '[class*="Player"]',
-    '[class*="media"]',
-    '[class*="Media"]',
-    '[data-testid*="video"]',
-    '[data-testid*="media"]',
-    '[data-testid*="player"]'
-  ];
-  
-  additionalSelectors.forEach(selector => {
+  ADDITIONAL_SELECTORS.forEach(selector => {
     try {
       document.querySelectorAll(selector).forEach(container => {
         // Check for nested audio/video elements
@@ -158,12 +278,10 @@ function setupObservers() {
       mutation.removedNodes.forEach((node) => {
         if (node.nodeType === Node.ELEMENT_NODE) {
           if (node.tagName === 'AUDIO' || node.tagName === 'VIDEO') {
-            mediaElements.delete(node);
+            cleanupMediaElement(node);
           }
           if (node.querySelectorAll) {
-            node.querySelectorAll('audio, video').forEach(element => {
-              mediaElements.delete(element);
-            });
+            node.querySelectorAll('audio, video').forEach(cleanupMediaElement);
           }
         }
       });
@@ -199,11 +317,19 @@ browser.runtime.onMessage.addListener((message, sender, sendResponse) => {
           elementsToRemove.push(element);
         }
       });
-      elementsToRemove.forEach(element => {
-        mediaElements.delete(element);
+      elementsToRemove.forEach(cleanupMediaElement);
+      // Return whether we have any media elements and amplification availability
+      sendResponse({ 
+        hasAudio: mediaElements.size > 0,
+        canAmplify: isAmplificationAvailable(),
+        siteBlocked: isSiteBlocked()
       });
-      // Return whether we have any media elements
-      sendResponse({ hasAudio: mediaElements.size > 0 });
+      break;
+    case 'checkAmplification':
+      sendResponse({ 
+        canAmplify: isAmplificationAvailable(),
+        siteBlocked: isSiteBlocked()
+      });
       break;
   }
 });
@@ -211,10 +337,10 @@ browser.runtime.onMessage.addListener((message, sender, sendResponse) => {
 // Initialize
 function initialize() {
   setupObservers();
-  setTimeout(scanForMediaElements, 1000);
+  setTimeout(scanForMediaElements, INITIAL_SCAN_DELAY);
   
   // Periodic scan for new media elements
-  setInterval(scanForMediaElements, 5000);
+  setInterval(scanForMediaElements, SCAN_INTERVAL);
 }
 
 // Start when ready

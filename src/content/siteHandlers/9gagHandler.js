@@ -1,4 +1,4 @@
-// Standard HTML5 media handler
+// 9gag specific media handler
 function initVolumeControl() {
   // Override Audio constructor for dynamic elements
   const originalAudio = window.Audio;
@@ -31,8 +31,18 @@ function detectSiteAudio() {
     if (typeof registerMediaElement === 'function') registerMediaElement(element);
   });
   
-  // Check common containers
-  const selectors = ['[class*="video"]', '[class*="audio"]', '[class*="player"]', '[class*="media"]'];
+  // 9gag specific selectors - currently using standard approach
+  // TODO: Add 9gag-specific logic for video containers and dynamic content
+  const selectors = [
+    '[class*="video"]', 
+    '[class*="audio"]', 
+    '[class*="player"]', 
+    '[class*="media"]',
+    '.post-container video',
+    '.gif-video',
+    '.video-post'
+  ];
+  
   selectors.forEach(selector => {
     try {
       document.querySelectorAll(selector).forEach(container => {
@@ -46,6 +56,7 @@ function detectSiteAudio() {
 
 function setSiteVolume(volume) {
   // Standard implementation relies on main content script
+  // TODO: Add 9gag-specific volume control logic if needed
 }
 
 // Export functions
@@ -54,4 +65,4 @@ window.detectSiteAudio = detectSiteAudio;
 window.setSiteVolume = setSiteVolume;
 
 // Set handler name for identification
-window.handlerName = 'standardHandler';
+window.handlerName = '9gagHandler';

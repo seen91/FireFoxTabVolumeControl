@@ -1,6 +1,7 @@
 // Track tab volumes and audio status
 const tabVolumes = new Map();
 const audioTabs = new Set();
+const tabHandlers = new Map(); // Track handler names for each tab
 const defaultVolume = 100;
 
 // Notify popup about audio status changes
@@ -25,10 +26,29 @@ browser.tabs.onUpdated.addListener((tabId, changeInfo) => {
       notifyPopupUpdate();
     }
   }
+  
+  // Check for URL changes and update handler accordingly
+  if (changeInfo.url) {
+    const url = new URL(changeInfo.url);
+    const hostname = url.hostname.toLowerCase();
+    
+    let handlerName = 'standardHandler';
+    if (hostname.includes('9gag.com')) {
+      handlerName = '9gagHandler';
+    }
+    
+    // Only log and update if handler actually changed
+    const currentHandler = tabHandlers.get(tabId);
+    if (currentHandler !== handlerName) {
+      console.log('Background: Setting handler name for tab', tabId, ':', handlerName);
+      tabHandlers.set(tabId, handlerName);
+    }
+  }
 });
 
 browser.tabs.onRemoved.addListener((tabId) => {
   tabVolumes.delete(tabId);
+  tabHandlers.delete(tabId); // Clean up handler tracking
   const wasAudioTab = audioTabs.has(tabId);
   audioTabs.delete(tabId);
   
@@ -82,6 +102,18 @@ browser.runtime.onMessage.addListener((message, sender, sendResponse) => {
         sendResponse({ tabs: audioTabsInfo });
       });
       return true;
+
+    case 'setHandlerName':
+      if (tabId && message.handlerName) {
+        // Only log if this is a new handler for this tab (to avoid duplicate logs)
+        const currentHandler = tabHandlers.get(tabId);
+        if (currentHandler !== message.handlerName) {
+          console.log('Background: Setting handler name for tab', tabId, ':', message.handlerName);
+        }
+        tabHandlers.set(tabId, message.handlerName);
+        sendResponse({ success: true });
+      }
+      break;
 
     case 'applyToAllTabs':
     case 'resetAllTabs':

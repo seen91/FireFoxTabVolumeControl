@@ -129,10 +129,23 @@ class TabListManager {
       // Send to tab and background
       await this.messageHandler.setTabVolume(tabId, volume);
       
-      // Update local state
+      // Update local state with validation
       this.state.updateTabVolume(tabId, volume);
     } catch (error) {
       console.error('Failed to update tab volume:', error);
+      
+      // Revert display to previous value if state update failed
+      const currentTab = this.state.findTab(tabId);
+      if (currentTab) {
+        tabVolumeDisplay.textContent = `${currentTab.volume}%`;
+        tabVolumeDisplay.className = `tab-volume-display ${this.uiManager.getVolumeClass(currentTab.volume)}`;
+        
+        // Also revert the slider
+        const slider = tabVolumeDisplay.closest('.tab-item').querySelector('.volume-slider');
+        if (slider) {
+          slider.value = currentTab.volume;
+        }
+      }
     }
   }
 
@@ -145,11 +158,13 @@ class TabListManager {
       try {
         const response = await this.messageHandler.getTabVolume(tab.id);
         if (response && response.volume !== undefined) {
-          tab.volume = response.volume;
+          // Use the state management system to update volume
+          this.state.updateTabVolume(tab.id, response.volume);
         }
       } catch (error) {
         // Content script might not be ready or tab might not have audio anymore
         // Keep the volume from background script
+        console.warn(`Failed to sync volume for tab ${tab.id}:`, error);
       }
     });
     

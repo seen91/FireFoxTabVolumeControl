@@ -44,6 +44,9 @@ class PopupController {
     // Set up master volume listeners
     this.masterVolumeManager.setupEventListeners();
     
+    // Set up state change listeners for reactive UI updates
+    this.setupStateListeners();
+    
     // Control buttons
     this.uiManager.getElement('applyToAllBtn').addEventListener('click', () => {
       this.masterVolumeManager.applyToAllTabs().then(() => {
@@ -63,6 +66,40 @@ class PopupController {
   }
 
   /**
+   * Set up state change event listeners for reactive UI updates
+   */
+  setupStateListeners() {
+    // Listen for master volume changes
+    this.state.addEventListener('masterVolumeChanged', (event) => {
+      this.masterVolumeManager.updateDisplay();
+    });
+
+    // Listen for tab volume changes
+    this.state.addEventListener('volumeChanged', (event) => {
+      if (event.type === 'bulk') {
+        // Bulk update - refresh entire tab list display
+        this.tabListManager.updateDisplay();
+      } else {
+        // Single tab update - could optimize to update just that tab
+        this.tabListManager.updateDisplay();
+      }
+    });
+
+    // Listen for tabs list changes
+    this.state.addEventListener('tabsChanged', (event) => {
+      // Re-render the tab list when tabs change
+      this.tabListManager.render();
+    });
+
+    // Listen for state resets
+    this.state.addEventListener('stateReset', (event) => {
+      // Re-initialize UI after state reset
+      this.masterVolumeManager.updateDisplay();
+      this.tabListManager.render();
+    });
+  }
+
+  /**
    * Load audio tabs from background script
    */
   async loadAudioTabs() {
@@ -77,6 +114,7 @@ class PopupController {
       const response = await this.messageHandler.getTabAudioStatus();
       
       if (response?.tabs) {
+        // Validate and set audio tabs with enhanced error handling
         this.state.setAudioTabs(response.tabs);
         
         // Query each tab for its actual current volume to ensure accuracy
@@ -90,6 +128,14 @@ class PopupController {
     } catch (error) {
       console.error('Failed to load audio tabs:', error);
       this.uiManager.showNoAudioMessage();
+      
+      // Validate current state integrity
+      const validation = this.state.validateState();
+      if (!validation.isValid) {
+        console.warn('State validation failed:', validation.errors);
+        // Could reset state here if critically corrupted
+        // this.state.reset();
+      }
     }
   }
 }

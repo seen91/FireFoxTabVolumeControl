@@ -14,16 +14,26 @@ class MasterVolumeManager {
   setupEventListeners() {
     // Master volume slider
     this.uiManager.getElement('masterVolumeSlider').addEventListener('input', (e) => {
-      const volume = parseInt(e.target.value);
-      this.state.setMasterVolume(volume);
-      this.updateDisplay();
+      try {
+        const volume = parseInt(e.target.value);
+        this.state.setMasterVolume(volume);
+        this.updateDisplay();
+      } catch (error) {
+        console.error('Failed to update master volume:', error);
+        // Revert slider to current state value
+        this.uiManager.getElement('masterVolumeSlider').value = this.state.getMasterVolume();
+      }
     });
 
     // Master volume preset buttons
     document.querySelectorAll('.master-control .preset-btn').forEach(btn => {
       btn.addEventListener('click', (e) => {
-        const volume = parseInt(e.target.getAttribute('data-volume'));
-        this.setVolume(volume);
+        try {
+          const volume = parseInt(e.target.getAttribute('data-volume'));
+          this.setVolume(volume);
+        } catch (error) {
+          console.error('Failed to set preset volume:', error);
+        }
       });
     });
   }
@@ -43,9 +53,17 @@ class MasterVolumeManager {
    * @param {number} volume - Volume level
    */
   setVolume(volume) {
-    this.state.setMasterVolume(volume);
-    this.uiManager.getElement('masterVolumeSlider').value = volume;
-    this.updateDisplay();
+    try {
+      this.state.setMasterVolume(volume);
+      this.uiManager.getElement('masterVolumeSlider').value = volume;
+      this.updateDisplay();
+    } catch (error) {
+      console.error('Failed to set master volume:', error);
+      // Revert UI to current state
+      const currentVolume = this.state.getMasterVolume();
+      this.uiManager.getElement('masterVolumeSlider').value = currentVolume;
+      this.updateDisplay();
+    }
   }
 
   /**
@@ -71,6 +89,8 @@ class MasterVolumeManager {
       }, CONFIG.TIMING.MASTER_VOLUME_DELAY);
     } catch (error) {
       console.error('Failed to apply master volume to all tabs:', error);
+      // Reset the flag if operation failed
+      this.state.setJustApplied(false);
     }
   }
 

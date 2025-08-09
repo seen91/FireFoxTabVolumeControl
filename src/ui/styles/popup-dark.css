@@ -1,0 +1,81 @@
+/**
+ * Firefox Tab Volume Control - Dark Theme Styles
+ * Dark theme overrides using CSS custom properties
+ */
+
+body.dark-theme {
+  /* Dark Theme Color Variables */
+  --bg-primary: #2b2a33;
+  --bg-secondary: #38383d;
+  --text-primary: #f9f9fa;
+  --text-secondary: #cfcfd8;
+  --text-tertiary: #cfcfd8;
+  --border-primary: #4c4c4f;
+  --border-secondary: #5c5c5f;
+  --accent-primary: #00ddff;
+  --accent-hover: #00c4e6;
+  --accent-secondary: #00ddff;
+  --accent-secondary-hover: #00c4e6;
+  
+  /* Dark Theme Volume Level Colors */
+  --volume-normal-bg: #2d4a2d;
+  --volume-normal-text: #90ee90;
+  --volume-low-bg: #4a2d1a;
+  --volume-low-text: #ffa366;
+  --volume-high-bg: #1a2d4a;
+  --volume-high-text: #66b3ff;
+  --volume-muted-bg: #4a1a1a;
+  --volume-muted-text: #ff6666;
+}
+
+/* Dark theme specific overrides */
+body.dark-theme .volume-display {
+  background: var(--accent-primary);
+  color: var(--bg-primary);
+}
+
+body.dark-theme .volume-slider::-webkit-slider-thumb {
+  background: var(--accent-primary);
+  border: 2px solid var(--bg-primary);
+}
+
+body.dark-theme .volume-slider::-moz-range-thumb {
+  background: var(--accent-primary);
+  border: 2px solid var(--bg-primary);
+}
+
+body.dark-theme .preset-btn {
+  border: 1px solid var(--accent-primary);
+  background: var(--bg-secondary);
+  color: var(--accent-primary);
+}
+
+body.dark-theme .preset-btn:hover {
+  background: var(--accent-primary);
+  color: var(--bg-primary);
+}
+
+body.dark-theme .apply-all-btn {
+  background: var(--accent-primary);
+  color: var(--bg-primary);
+}
+
+body.dark-theme .apply-all-btn:hover {
+  background: var(--accent-hover);
+}
+
+body.dark-theme .master-action-btn {
+  border: 1px solid var(--border-primary);
+  background: var(--bg-secondary);
+  color: var(--text-primary);
+}
+
+body.dark-theme .master-action-btn:hover {
+  background: var(--border-primary);
+  border-color: var(--border-secondary);
+}
+
+body.dark-theme .tab-item {
+  background: var(--bg-secondary);
+  border: 1px solid var(--border-primary);
+}

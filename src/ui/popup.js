@@ -3,10 +3,19 @@
  * Manages the popup interface for controlling tab volumes
  */
 
+// Configuration constants
+const CONFIG = {
+  VOLUMES: { MIN: 0, MAX: 500, DEFAULT: 100, PRESETS: [0, 100, 200, 500] },
+  TIMING: { MASTER_VOLUME_DELAY: 1000, REFRESH_DELAY: 500 },
+  VOLUME_THRESHOLDS: { LOW: 50, HIGH: 150 },
+  UI: { DEFAULT_FAVICON: 'data:image/svg+xml,<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 16 16"><rect width="16" height="16" fill="%23ccc"/></svg>' },
+  CLASSES: { VOLUME_NORMAL: 'volume-normal', VOLUME_LOW: 'volume-low', VOLUME_HIGH: 'volume-high', VOLUME_MUTED: 'volume-muted' }
+};
+
 // DOM elements and state
 let masterVolumeSlider, masterVolumeDisplay, tabList, applyToAllBtn, refreshBtn, resetBtn;
 let audioTabs = [];
-let masterVolume = 100;
+let masterVolume = CONFIG.VOLUMES.DEFAULT;
 let justAppliedMasterVolume = false;
 
 /**
@@ -20,6 +29,27 @@ function init() {
   applyToAllBtn = document.getElementById('applyToAllBtn');
   refreshBtn = document.getElementById('refreshBtn');
   resetBtn = document.getElementById('resetBtn');
+
+  // Initialize master volume slider with config values
+  masterVolumeSlider.min = CONFIG.VOLUMES.MIN;
+  masterVolumeSlider.max = CONFIG.VOLUMES.MAX;
+  masterVolumeSlider.value = CONFIG.VOLUMES.DEFAULT;
+  
+  // Update volume labels with config values
+  const volumeLabels = document.querySelectorAll('.master-control .volume-label');
+  if (volumeLabels.length >= 2) {
+    volumeLabels[0].textContent = `${CONFIG.VOLUMES.MIN}%`;
+    volumeLabels[1].textContent = `${CONFIG.VOLUMES.MAX}%`;
+  }
+  
+  // Update preset buttons with config values
+  const presetButtons = document.querySelectorAll('.master-control .preset-btn');
+  CONFIG.VOLUMES.PRESETS.forEach((volume, index) => {
+    if (presetButtons[index]) {
+      presetButtons[index].setAttribute('data-volume', volume);
+      presetButtons[index].textContent = volume === 0 ? 'Mute' : `${volume}%`;
+    }
+  });
 
   // Initialize theme manager
   if (window.themeManager) {
@@ -103,7 +133,7 @@ function applyMasterVolumeToAllTabs() {
       // Clear the flag after a delay to allow normal refreshes
       setTimeout(() => {
         justAppliedMasterVolume = false;
-      }, 1000);
+      }, CONFIG.TIMING.MASTER_VOLUME_DELAY);
     })
     .catch(console.error);
 }
@@ -114,8 +144,8 @@ function applyMasterVolumeToAllTabs() {
 function resetAllTabs() {
   browser.runtime.sendMessage({ action: 'resetAllTabs' })
     .then(() => {
-      setMasterVolume(100);
-      setTimeout(loadAudioTabs, 500);
+      setMasterVolume(CONFIG.VOLUMES.DEFAULT);
+      setTimeout(loadAudioTabs, CONFIG.TIMING.REFRESH_DELAY);
     })
     .catch(console.error);
 }
@@ -217,7 +247,7 @@ function createTabElement(tab) {
   tabDiv.className = 'tab-item';
   
   const volumeClass = getVolumeClass(tab.volume);
-  const favicon = tab.favIconUrl || 'data:image/svg+xml,<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 16 16"><rect width="16" height="16" fill="%23ccc"/></svg>';
+  const favicon = tab.favIconUrl || CONFIG.UI.DEFAULT_FAVICON;
   
   tabDiv.innerHTML = `
     <div class="tab-header">
@@ -227,15 +257,15 @@ function createTabElement(tab) {
     </div>
     <div class="volume-container">
       <div class="volume-slider-container">
-        <span class="volume-label">0%</span>
-        <input type="range" class="volume-slider" min="0" max="500" value="${tab.volume}" data-tab-id="${tab.id}">
-        <span class="volume-label">500%</span>
+        <span class="volume-label">${CONFIG.VOLUMES.MIN}%</span>
+        <input type="range" class="volume-slider" min="${CONFIG.VOLUMES.MIN}" max="${CONFIG.VOLUMES.MAX}" value="${tab.volume}" data-tab-id="${tab.id}">
+        <span class="volume-label">${CONFIG.VOLUMES.MAX}%</span>
       </div>
       <div class="preset-buttons">
-        <button class="preset-btn" data-tab-id="${tab.id}" data-volume="0">Mute</button>
-        <button class="preset-btn" data-tab-id="${tab.id}" data-volume="100">100%</button>
-        <button class="preset-btn" data-tab-id="${tab.id}" data-volume="200">200%</button>
-        <button class="preset-btn" data-tab-id="${tab.id}" data-volume="500">500%</button>
+        <button class="preset-btn" data-tab-id="${tab.id}" data-volume="${CONFIG.VOLUMES.PRESETS[0]}">Mute</button>
+        <button class="preset-btn" data-tab-id="${tab.id}" data-volume="${CONFIG.VOLUMES.PRESETS[1]}">${CONFIG.VOLUMES.PRESETS[1]}%</button>
+        <button class="preset-btn" data-tab-id="${tab.id}" data-volume="${CONFIG.VOLUMES.PRESETS[2]}">${CONFIG.VOLUMES.PRESETS[2]}%</button>
+        <button class="preset-btn" data-tab-id="${tab.id}" data-volume="${CONFIG.VOLUMES.PRESETS[3]}">${CONFIG.VOLUMES.PRESETS[3]}%</button>
       </div>
     </div>
   `;
@@ -288,10 +318,10 @@ function updateTabVolume(tabId, volume, tabVolumeDisplay) {
  * Get CSS class based on volume level
  */
 function getVolumeClass(volume) {
-  if (volume === 0) return 'volume-muted';
-  if (volume < 50) return 'volume-low';
-  if (volume > 150) return 'volume-high';
-  return 'volume-normal';
+  if (volume === 0) return CONFIG.CLASSES.VOLUME_MUTED;
+  if (volume < CONFIG.VOLUME_THRESHOLDS.LOW) return CONFIG.CLASSES.VOLUME_LOW;
+  if (volume > CONFIG.VOLUME_THRESHOLDS.HIGH) return CONFIG.CLASSES.VOLUME_HIGH;
+  return CONFIG.CLASSES.VOLUME_NORMAL;
 }
 
 /**

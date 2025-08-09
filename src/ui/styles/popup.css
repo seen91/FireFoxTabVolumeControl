@@ -1,0 +1,294 @@
+/**
+ * Firefox Tab Volume Control - Main Popup Styles
+ * Base styles using CSS custom properties for theme management
+ */
+
+:root {
+  /* Color Variables */
+  --bg-primary: #ffffff;
+  --bg-secondary: #f8f9fa;
+  --text-primary: #333;
+  --text-secondary: #666;
+  --text-tertiary: #cfcfd8;
+  --border-primary: #e1e4e8;
+  --border-secondary: #4c4c4f;
+  --accent-primary: #1a73e8;
+  --accent-hover: #1557b0;
+  --accent-secondary: #00ddff;
+  --accent-secondary-hover: #00c4e6;
+  
+  /* Volume Level Colors */
+  --volume-normal-bg: #e8f5e8;
+  --volume-normal-text: #2d5a2d;
+  --volume-low-bg: #fff3e0;
+  --volume-low-text: #d84315;
+  --volume-high-bg: #e3f2fd;
+  --volume-high-text: #1976d2;
+  --volume-muted-bg: #ffebee;
+  --volume-muted-text: #d32f2f;
+  
+  /* Spacing */
+  --spacing-xs: 4px;
+  --spacing-sm: 8px;
+  --spacing-md: 12px;
+  --spacing-lg: 16px;
+  --spacing-xl: 20px;
+  
+  /* Border Radius */
+  --radius-sm: 4px;
+  --radius-md: 8px;
+  --radius-lg: 12px;
+  
+  /* Font Sizes */
+  --font-xs: 11px;
+  --font-sm: 12px;
+  --font-md: 14px;
+  --font-lg: 16px;
+  
+  /* Transitions */
+  --transition-fast: 0.2s;
+}
+
+body {
+  width: 320px;
+  margin: 0;
+  padding: var(--spacing-lg);
+  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+  font-size: var(--font-md);
+  background-color: var(--bg-primary);
+  color: var(--text-primary);
+}
+
+.header {
+  text-align: center;
+  margin-bottom: var(--spacing-lg);
+  font-size: var(--font-lg);
+  font-weight: 600;
+  color: var(--accent-primary);
+}
+
+/* Master Control Section */
+.master-control {
+  background: var(--bg-secondary);
+  border: 1px solid var(--border-primary);
+  border-radius: var(--radius-md);
+  padding: var(--spacing-lg);
+  margin-bottom: var(--spacing-lg);
+}
+
+.master-title {
+  font-weight: 600;
+  color: var(--accent-primary);
+  margin-bottom: var(--spacing-md);
+  font-size: var(--font-md);
+}
+
+/* Volume Controls */
+.volume-container {
+  margin-bottom: var(--spacing-md);
+}
+
+.volume-slider-container {
+  display: flex;
+  align-items: center;
+  gap: var(--spacing-sm);
+  margin-bottom: var(--spacing-sm);
+}
+
+.volume-label {
+  font-size: var(--font-sm);
+  color: var(--text-secondary);
+  min-width: 24px;
+}
+
+.volume-slider {
+  flex: 1;
+  height: 6px;
+  border-radius: 3px;
+  background: var(--border-primary);
+  outline: none;
+  -webkit-appearance: none;
+  appearance: none;
+}
+
+.volume-slider::-webkit-slider-thumb {
+  -webkit-appearance: none;
+  appearance: none;
+  width: 18px;
+  height: 18px;
+  border-radius: 50%;
+  background: var(--accent-primary);
+  cursor: pointer;
+  border: 2px solid var(--bg-primary);
+  box-shadow: 0 2px 4px rgba(0,0,0,0.2);
+}
+
+.volume-slider::-moz-range-thumb {
+  width: 18px;
+  height: 18px;
+  border-radius: 50%;
+  background: var(--accent-primary);
+  cursor: pointer;
+  border: 2px solid var(--bg-primary);
+  box-shadow: 0 2px 4px rgba(0,0,0,0.2);
+}
+
+.volume-display {
+  min-width: 45px;
+  padding: var(--spacing-xs) var(--spacing-sm);
+  background: var(--accent-primary);
+  color: white;
+  border-radius: var(--radius-lg);
+  font-size: var(--font-sm);
+  font-weight: 600;
+  text-align: center;
+}
+
+/* Preset Buttons */
+.preset-buttons {
+  display: flex;
+  gap: var(--spacing-xs);
+  margin-bottom: var(--spacing-sm);
+}
+
+.preset-btn {
+  flex: 1;
+  padding: 6px var(--spacing-sm);
+  border: 1px solid var(--accent-primary);
+  background: white;
+  color: var(--accent-primary);
+  border-radius: var(--radius-sm);
+  cursor: pointer;
+  font-size: var(--font-xs);
+  font-weight: 500;
+  transition: all var(--transition-fast);
+}
+
+.preset-btn:hover {
+  background: var(--accent-primary);
+  color: white;
+}
+
+/* Action Buttons */
+.apply-all-btn {
+  width: 100%;
+  padding: var(--spacing-sm);
+  background: var(--accent-primary);
+  color: white;
+  border: none;
+  border-radius: var(--radius-sm);
+  cursor: pointer;
+  font-size: var(--font-sm);
+  font-weight: 600;
+  transition: background-color var(--transition-fast);
+}
+
+.apply-all-btn:hover {
+  background: var(--accent-hover);
+}
+
+.master-action-buttons {
+  display: flex;
+  gap: var(--spacing-sm);
+  margin-top: var(--spacing-sm);
+}
+
+.master-action-btn {
+  flex: 1;
+  padding: 6px var(--spacing-sm);
+  border: 1px solid var(--border-primary);
+  background: white;
+  color: var(--text-primary);
+  border-radius: var(--radius-sm);
+  cursor: pointer;
+  font-size: var(--font-xs);
+  font-weight: 500;
+  transition: all var(--transition-fast);
+}
+
+.master-action-btn:hover {
+  background: #f5f5f5;
+  border-color: #ccc;
+}
+
+/* Tab List */
+.tab-list {
+  max-height: 300px;
+  overflow-y: auto;
+}
+
+.tab-item {
+  background: white;
+  border: 1px solid var(--border-primary);
+  border-radius: var(--radius-md);
+  padding: var(--spacing-md);
+  margin-bottom: var(--spacing-sm);
+  position: relative;
+}
+
+.tab-header {
+  display: flex;
+  align-items: center;
+  gap: var(--spacing-sm);
+  margin-bottom: var(--spacing-sm);
+}
+
+.tab-favicon {
+  width: 16px;
+  height: 16px;
+  border-radius: 2px;
+}
+
+.tab-title {
+  flex: 1;
+  font-size: var(--font-sm);
+  font-weight: 500;
+  color: var(--text-primary);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.tab-volume-display {
+  font-size: var(--font-xs);
+  font-weight: 600;
+  padding: 2px 6px;
+  border-radius: var(--radius-md);
+  min-width: 32px;
+  text-align: center;
+}
+
+/* Volume Level Styles */
+.volume-normal { 
+  background: var(--volume-normal-bg); 
+  color: var(--volume-normal-text); 
+}
+
+.volume-low { 
+  background: var(--volume-low-bg); 
+  color: var(--volume-low-text); 
+}
+
+.volume-high { 
+  background: var(--volume-high-bg); 
+  color: var(--volume-high-text); 
+}
+
+.volume-muted { 
+  background: var(--volume-muted-bg); 
+  color: var(--volume-muted-text); 
+}
+
+/* Status Messages */
+.no-audio {
+  text-align: center;
+  color: var(--text-secondary);
+  font-style: italic;
+  padding: var(--spacing-xl);
+}
+
+.loading {
+  text-align: center;
+  color: var(--text-secondary);
+  padding: var(--spacing-xl);
+}

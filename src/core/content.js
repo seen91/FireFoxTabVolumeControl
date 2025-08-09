@@ -250,6 +250,11 @@ function setupPlayEventListener() {
  * @param {HTMLMediaElement} element - The media element to handle
  */
 function handleMediaElement(element) {
+  if (!element) {
+    console.warn('Volume control: handleMediaElement called with undefined element');
+    return;
+  }
+  
   MediaElementManager.handleMediaElement(
     element, 
     state, 
@@ -264,6 +269,11 @@ function handleMediaElement(element) {
  * @param {HTMLMediaElement} element - The media element to connect
  */
 function connectElementToGainNode(element) {
+  if (!element) {
+    console.warn('Volume control: connectElementToGainNode called with undefined element');
+    return;
+  }
+  
   MediaElementManager.connectElementToGainNode(
     element, 
     state, 
@@ -277,6 +287,11 @@ function connectElementToGainNode(element) {
  * @param {number} volumeLevel - Volume level (0.0 to 5.0)
  */
 function applyVolumeToElement(element, volumeLevel) {
+  if (!element) {
+    console.warn('Volume control: applyVolumeToElement called with undefined element');
+    return;
+  }
+  
   MediaElementManager.applyVolumeToElement(element, volumeLevel);
 }
 

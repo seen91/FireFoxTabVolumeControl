@@ -15,6 +15,12 @@ const MediaElementManager = {};
  * @param {Function} notifyHasAudio - Function to notify that audio is present
  */
 MediaElementManager.handleMediaElement = function(element, state, applyVolumeToElement, connectElementToGainNode, notifyHasAudio) {
+  // Safety check: ensure element exists
+  if (!element) {
+    console.warn('Volume control: handleMediaElement called with null/undefined element');
+    return;
+  }
+  
   // Skip if already handling this element
   if (state.audioElements.has(element)) return;
   
@@ -60,6 +66,12 @@ MediaElementManager.handleMediaElement = function(element, state, applyVolumeToE
  * @param {Function} applyVolumeToElement - Function to apply volume to element
  */
 MediaElementManager.connectElementToGainNode = function(element, state, applyVolumeToElement) {
+  // Safety check: ensure element exists
+  if (!element) {
+    console.warn('Volume control: connectElementToGainNode called with null/undefined element');
+    return;
+  }
+  
   // Don't reconnect if already connected
   if (state.mediaSourceNodes.has(element)) return;
   
@@ -118,6 +130,12 @@ MediaElementManager.connectElementToGainNode = function(element, state, applyVol
  * @param {number} volumeLevel - Volume level (0.0 to 5.0)
  */
 MediaElementManager.applyVolumeToElement = function(element, volumeLevel) {
+  // Safety check: ensure element exists
+  if (!element) {
+    console.warn('Volume control: applyVolumeToElement called with null/undefined element');
+    return;
+  }
+  
   try {
     // HTML5 volume is capped at 1.0, so we can only use this for reducing volume
     if (volumeLevel <= 1.0) {

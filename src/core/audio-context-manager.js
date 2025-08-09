@@ -313,6 +313,13 @@ AudioContextManager.checkForActiveMedia = function(state) {
 AudioContextManager.tryReconnectMediaElements = function(state, connectElementToGainNode, handleMediaElement) {
   // Reconnect existing elements that might not have connected properly
   state.audioElements.forEach(element => {
+    // Safety check: ensure element exists before attempting to reconnect
+    if (!element) {
+      console.warn('Volume control: Found null/undefined element in audioElements set, removing');
+      state.audioElements.delete(element);
+      return;
+    }
+    
     if (!state.mediaSourceNodes.has(element)) {
       connectElementToGainNode(element);
     }

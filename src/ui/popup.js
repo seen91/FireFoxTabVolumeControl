@@ -119,7 +119,6 @@ function createTabElement(tab) {
         <span class="volume-label">0%</span>
         <input type="range" class="volume-slider" min="0" max="500" value="${tab.volume}" data-tab-id="${tab.id}">
         <span class="volume-label">500%</span>
-        <span class="volume-display ${volumeClass}">${tab.volume}%</span>
       </div>
       <div class="preset-buttons">
         <button class="preset-btn" data-tab-id="${tab.id}" data-volume="0">Mute</button>
@@ -132,31 +131,28 @@ function createTabElement(tab) {
 
   // Set up events
   const slider = tabDiv.querySelector('.volume-slider');
-  const volumeDisplay = tabDiv.querySelector('.volume-display');
   const tabVolumeDisplay = tabDiv.querySelector('.tab-volume-display');
   
   slider.addEventListener('input', (e) => {
-    updateTabVolume(tab.id, parseInt(e.target.value), volumeDisplay, tabVolumeDisplay);
+    updateTabVolume(tab.id, parseInt(e.target.value), tabVolumeDisplay);
   });
 
   tabDiv.querySelectorAll('.preset-btn').forEach(btn => {
     btn.addEventListener('click', (e) => {
       const volume = parseInt(e.target.getAttribute('data-volume'));
       slider.value = volume;
-      updateTabVolume(tab.id, volume, volumeDisplay, tabVolumeDisplay);
+      updateTabVolume(tab.id, volume, tabVolumeDisplay);
     });
   });
 
   return tabDiv;
 }
 
-function updateTabVolume(tabId, volume, volumeDisplay, tabVolumeDisplay) {
-  // Update displays immediately
-  volumeDisplay.textContent = `${volume}%`;
+function updateTabVolume(tabId, volume, tabVolumeDisplay) {
+  // Update display immediately
   tabVolumeDisplay.textContent = `${volume}%`;
   
   const volumeClass = getVolumeClass(volume);
-  volumeDisplay.className = `volume-display ${volumeClass}`;
   tabVolumeDisplay.className = `tab-volume-display ${volumeClass}`;
 
   // Send to tab

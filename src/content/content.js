@@ -24,25 +24,32 @@ function initAudioContext() {
 function applyVolumeToElement(element, volume) {
   try {
     if (volume <= 100) {
+      // For volume <= 100%, use HTML5 volume property
       element.volume = volume / 100;
-      // Disconnect from Web Audio if connected
-      if (element.volumeSource) {
-        element.volumeSource.disconnect();
-        delete element.volumeSource;
+      
+      // If we have Web Audio API connection, we need to maintain it
+      // but set gain to 1.0 and rely on element.volume for reduction
+      if (element.volumeSource && gainNode) {
+        gainNode.gain.value = 1.0;
       }
-    } else if (initAudioContext() && !element.volumeSource) {
-      // Use Web Audio for amplification
-      try {
-        const source = audioContext.createMediaElementSource(element);
-        source.connect(gainNode);
-        element.volumeSource = source;
+    } else {
+      // For amplification (>100%), we need Web Audio API
+      if (initAudioContext() && !element.volumeSource) {
+        try {
+          const source = audioContext.createMediaElementSource(element);
+          source.connect(gainNode);
+          element.volumeSource = source;
+          element.volume = 1; // Keep element at full volume
+          gainNode.gain.value = volume / 100;
+        } catch (error) {
+          console.warn('Web Audio setup failed, using fallback:', error);
+          element.volume = 1; // Fallback to max volume
+        }
+      } else if (gainNode) {
+        // Already connected to Web Audio, just update gain
         element.volume = 1;
         gainNode.gain.value = volume / 100;
-      } catch (error) {
-        element.volume = 1; // Fallback
       }
-    } else if (gainNode) {
-      gainNode.gain.value = volume / 100;
     }
   } catch (error) {
     console.error('Volume application failed:', error);

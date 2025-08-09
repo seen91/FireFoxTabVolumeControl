@@ -2,6 +2,7 @@
 const tabVolumes = new Map();
 const audioTabs = new Set();
 const tabHandlers = new Map(); // Track handler names for each tab
+const tabHostnames = new Map(); // Track previous hostname for each tab
 const tabRemovalTimeouts = new Map(); // Track delayed removal timeouts
 const defaultVolume = 100;
 const REMOVAL_DELAY = 3000; // 3 seconds delay before removing tabs that stop being audible
@@ -35,6 +36,7 @@ async function cleanupAudioTabs() {
       audioTabs.delete(tabId);
       tabVolumes.delete(tabId);
       tabHandlers.delete(tabId);
+      tabHostnames.delete(tabId);
       clearTimeout(tabRemovalTimeouts.get(tabId));
       tabRemovalTimeouts.delete(tabId);
       removedAny = true;
@@ -58,6 +60,21 @@ browser.tabs.onUpdated.addListener((tabId, changeInfo) => {
     if (changeInfo.audible) {
       // Tab started playing audio - add it immediately
       audioTabs.add(tabId);
+      
+      // Initialize hostname tracking if not already present
+      if (!tabHostnames.has(tabId)) {
+        browser.tabs.get(tabId).then(tab => {
+          if (tab && tab.url) {
+            try {
+              const url = new URL(tab.url);
+              tabHostnames.set(tabId, url.hostname.toLowerCase());
+            } catch (e) {
+              // URL parsing failed, set a placeholder
+              tabHostnames.set(tabId, 'unknown');
+            }
+          }
+        }).catch(() => {});
+      }
       
       // Cancel any pending removal
       if (tabRemovalTimeouts.has(tabId)) {
@@ -90,12 +107,30 @@ browser.tabs.onUpdated.addListener((tabId, changeInfo) => {
     }
   }
   
-  // Check for URL changes and update handler accordingly
+  // Check for URL changes and reset volume when changing sites
   if (changeInfo.url) {
     const url = new URL(changeInfo.url);
     const hostname = url.hostname.toLowerCase();
     
     let handlerName = 'standardHandler';
+    
+    // Check if this is a different site (different hostname)
+    const previousHostname = tabHostnames.get(tabId);
+    const hadPreviousVolume = tabVolumes.has(tabId);
+    
+    // If hostname changed and tab had a volume setting, reset to default
+    if (hadPreviousVolume && previousHostname && previousHostname !== hostname) {
+      tabVolumes.set(tabId, defaultVolume);
+      
+      // Apply the reset volume to the content script
+      browser.tabs.sendMessage(tabId, { action: 'setVolume', volume: defaultVolume }).catch(() => {});
+      
+      // Notify popup about the volume change
+      notifyPopupUpdate();
+    }
+    
+    // Update stored hostname for future comparisons
+    tabHostnames.set(tabId, hostname);
     
     // Only log and update if handler actually changed
     const currentHandler = tabHandlers.get(tabId);
@@ -109,6 +144,7 @@ browser.tabs.onUpdated.addListener((tabId, changeInfo) => {
 browser.tabs.onRemoved.addListener((tabId) => {
   tabVolumes.delete(tabId);
   tabHandlers.delete(tabId);
+  tabHostnames.delete(tabId);
   
   // Clear any pending removal timeout
   if (tabRemovalTimeouts.has(tabId)) {
@@ -133,6 +169,22 @@ browser.runtime.onMessage.addListener((message, sender, sendResponse) => {
     case 'setVolume':
       if (tabId && message.volume !== undefined) {
         tabVolumes.set(tabId, message.volume);
+        
+        // Initialize hostname tracking if not already present
+        if (!tabHostnames.has(tabId)) {
+          browser.tabs.get(tabId).then(tab => {
+            if (tab && tab.url) {
+              try {
+                const url = new URL(tab.url);
+                tabHostnames.set(tabId, url.hostname.toLowerCase());
+              } catch (e) {
+                // URL parsing failed, set a placeholder
+                tabHostnames.set(tabId, 'unknown');
+              }
+            }
+          }).catch(() => {});
+        }
+        
         browser.tabs.sendMessage(tabId, { action: 'setVolume', volume: message.volume }).catch(() => {});
         sendResponse({ success: true });
       }

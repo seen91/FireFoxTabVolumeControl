@@ -5,6 +5,7 @@ let gainNode = null;
 let mediaElements = new Set();
 let connectedElements = new Set();
 let blockedSites = new Set();
+let currentHostname = window.location.hostname.toLowerCase();
 
 // Constants
 const VOLUME_MAX = 100;
@@ -341,6 +342,55 @@ function initialize() {
   
   // Periodic scan for new media elements
   setInterval(scanForMediaElements, SCAN_INTERVAL);
+  
+  // Check for page navigation (hostname change) and reset volume
+  checkForHostnameChange();
+}
+
+/**
+ * Check if the hostname has changed (page navigation) and reset volume if so
+ */
+function checkForHostnameChange() {
+  const newHostname = window.location.hostname.toLowerCase();
+  
+  if (currentHostname !== newHostname) {
+    // Reset internal state
+    currentVolume = 100;
+    currentHostname = newHostname;
+    
+    // Clear blocked sites cache since we're on a new site
+    blockedSites.clear();
+    
+    // Clean up existing audio context and connected elements
+    if (audioContext) {
+      try {
+        audioContext.close();
+      } catch (e) {}
+      audioContext = null;
+      gainNode = null;
+    }
+    
+    // Clear connected elements
+    connectedElements.clear();
+    
+    // Clean up media elements
+    mediaElements.forEach(element => {
+      cleanupAudioSource(element);
+    });
+    mediaElements.clear();
+    
+    // Get volume from background (should be reset to 100)
+    browser.runtime.sendMessage({ action: 'getVolume' })
+      .then(response => {
+        if (response && response.volume !== undefined) {
+          setVolume(response.volume);
+        }
+      })
+      .catch(() => {});
+  }
+  
+  // Check again less frequently to reduce CPU usage
+  setTimeout(checkForHostnameChange, 2000);
 }
 
 // Start when ready

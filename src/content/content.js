@@ -3,33 +3,84 @@
  * Main coordinator for volume control functionality
  */
 
+// Constants
+const SCAN_INTERVAL = 5000;
+const INITIAL_SCAN_DELAY = 1000;
+
 // Global module instances
 let audioManager;
 let mediaRegistry;
 let volumeController;
 let mediaScanner;
 let navigationHandler;
-
-// Module loading and initialization
 let modulesLoaded = false;
 
 /**
- * Load modules dynamically using dynamic imports
+ * Initialize site-specific handlers
  */
-async function loadModules() {
+async function initializeSiteHandlers() {
+  // Override Audio constructor for dynamic elements
+  const originalAudio = window.Audio;
+  if (originalAudio) {
+    window.Audio = function(...args) {
+      const audio = new originalAudio(...args);
+      setTimeout(() => {
+        if (mediaRegistry) mediaRegistry.registerMediaElement(audio);
+      }, 100);
+      return audio;
+    };
+  }
+  
+  // Override createElement for audio/video elements
+  const originalCreateElement = document.createElement;
+  document.createElement = function(tagName, ...args) {
+    const element = originalCreateElement.call(this, tagName, ...args);
+    if (tagName && ['audio', 'video'].includes(tagName.toLowerCase())) {
+      setTimeout(() => {
+        if (mediaRegistry) mediaRegistry.registerMediaElement(element);
+      }, 100);
+    }
+    return element;
+  };
+
+  // Load and execute the standard site handler
+  try {
+    const handlerUrl = browser.runtime.getURL('src/content/siteHandlers/standardHandler.js');
+    const response = await fetch(handlerUrl);
+    const handlerCode = await response.text();
+    
+    // Execute the handler code
+    const script = document.createElement('script');
+    script.textContent = handlerCode;
+    document.head.appendChild(script);
+    document.head.removeChild(script);
+    
+    // Set up global function for media registry access
+    window.registerMediaElement = (element) => {
+      if (mediaRegistry) {
+        mediaRegistry.registerMediaElement(element);
+      }
+    };
+  } catch (error) {
+    console.warn('Failed to load site handler:', error);
+  }
+}
+
+/**
+ * Load and initialize all modules
+ */
+async function initializeModules() {
   try {
     const baseUrl = browser.runtime.getURL('src/content/modules/');
     
-    // Load all modules
+    // Load all modules in parallel
     const [
-      { SCAN_INTERVAL, INITIAL_SCAN_DELAY },
       AudioManager,
       MediaElementRegistry,
       VolumeController,
       MediaScanner,
       NavigationHandler
     ] = await Promise.all([
-      import(baseUrl + 'constants.js'),
       import(baseUrl + 'audioManager.js').then(m => m.default),
       import(baseUrl + 'mediaElementRegistry.js').then(m => m.default),
       import(baseUrl + 'volumeController.js').then(m => m.default),
@@ -37,11 +88,7 @@ async function loadModules() {
       import(baseUrl + 'navigationHandler.js').then(m => m.default)
     ]);
 
-    // Store constants globally for use in other functions
-    window.SCAN_INTERVAL = SCAN_INTERVAL;
-    window.INITIAL_SCAN_DELAY = INITIAL_SCAN_DELAY;
-
-    // Initialize modules
+    // Initialize modules with proper dependencies
     audioManager = new AudioManager();
     volumeController = new VolumeController(audioManager);
     mediaRegistry = new MediaElementRegistry(volumeController);
@@ -54,13 +101,6 @@ async function loadModules() {
     console.error('Failed to load modules:', error);
     return false;
   }
-}
-
-/**
- * Initialize all modules (legacy fallback)
- */
-function initializeModules() {
-  // This is now handled by loadModules()
 }
 
 /**
@@ -114,19 +154,20 @@ browser.runtime.onMessage.addListener((message, sender, sendResponse) => {
  * Initialize the extension
  */
 async function initialize() {
-  // Load modules first
-  const modulesLoadSuccess = await loadModules();
-  if (!modulesLoadSuccess) {
-    console.error('Failed to load modules, extension may not work properly');
+  // Initialize site handlers first
+  await initializeSiteHandlers();
+  
+  // Load and initialize modules
+  const success = await initializeModules();
+  if (!success) {
+    console.error('Failed to initialize modules, extension may not work properly');
     return;
   }
   
-  // Set up media scanning and observation
+  // Set up media scanning and monitoring
   mediaScanner.setupObservers();
-  setTimeout(() => mediaScanner.scanForMediaElements(), window.INITIAL_SCAN_DELAY);
-  
-  // Set up periodic scanning for new media elements
-  setInterval(() => mediaScanner.scanForMediaElements(), window.SCAN_INTERVAL);
+  setTimeout(() => mediaScanner.scanForMediaElements(), INITIAL_SCAN_DELAY);
+  setInterval(() => mediaScanner.scanForMediaElements(), SCAN_INTERVAL);
   
   // Start navigation monitoring
   navigationHandler.startNavigationMonitoring();

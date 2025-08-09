@@ -1,10 +1,18 @@
+/**
+ * Firefox Tab Volume Control - Popup Script
+ * Manages the popup interface for controlling tab volumes
+ */
+
 // DOM elements and state
 let masterVolumeSlider, masterVolumeDisplay, tabList, applyToAllBtn, refreshBtn, resetBtn;
 let audioTabs = [];
 let masterVolume = 100;
 
+/**
+ * Initialize popup interface
+ */
 function init() {
-  // Get elements
+  // Get DOM elements
   masterVolumeSlider = document.getElementById('masterVolumeSlider');
   masterVolumeDisplay = document.getElementById('masterVolumeDisplay');
   tabList = document.getElementById('tabList');
@@ -19,6 +27,17 @@ function init() {
     });
   }
 
+  // Set up event listeners
+  setupEventListeners();
+  
+  // Load audio tabs
+  loadAudioTabs();
+}
+
+/**
+ * Set up all event listeners
+ */
+function setupEventListeners() {
   // Listen for audio status changes from background script
   browser.runtime.onMessage.addListener((message) => {
     if (message.action === 'audioStatusChanged') {
@@ -26,42 +45,54 @@ function init() {
     }
   });
 
-  // Set up events
+  // Master volume control
   masterVolumeSlider.addEventListener('input', (e) => {
     masterVolume = parseInt(e.target.value);
     updateMasterVolumeDisplay();
   });
 
+  // Master volume preset buttons
   document.querySelectorAll('.master-control .preset-btn').forEach(btn => {
     btn.addEventListener('click', (e) => {
       setMasterVolume(parseInt(e.target.getAttribute('data-volume')));
     });
   });
 
+  // Control buttons
   applyToAllBtn.addEventListener('click', applyMasterVolumeToAllTabs);
   refreshBtn.addEventListener('click', loadAudioTabs);
   resetBtn.addEventListener('click', resetAllTabs);
-
-  loadAudioTabs();
 }
 
+/**
+ * Update master volume display
+ */
 function updateMasterVolumeDisplay() {
   masterVolumeDisplay.textContent = `${masterVolume}%`;
   masterVolumeDisplay.className = `volume-display ${getVolumeClass(masterVolume)}`;
 }
 
+/**
+ * Set master volume to specific value
+ */
 function setMasterVolume(volume) {
   masterVolume = volume;
   masterVolumeSlider.value = volume;
   updateMasterVolumeDisplay();
 }
 
+/**
+ * Apply master volume to all audio tabs
+ */
 function applyMasterVolumeToAllTabs() {
   browser.runtime.sendMessage({ action: 'applyToAllTabs', volume: masterVolume })
     .then(() => setTimeout(loadAudioTabs, 500))
     .catch(console.error);
 }
 
+/**
+ * Reset all tabs to default volume
+ */
 function resetAllTabs() {
   browser.runtime.sendMessage({ action: 'resetAllTabs' })
     .then(() => {
@@ -71,6 +102,9 @@ function resetAllTabs() {
     .catch(console.error);
 }
 
+/**
+ * Load audio tabs from background script
+ */
 function loadAudioTabs() {
   tabList.innerHTML = '<div class="loading">Loading audio tabs...</div>';
   
@@ -89,6 +123,9 @@ function loadAudioTabs() {
     });
 }
 
+/**
+ * Render the list of audio tabs
+ */
 function renderTabList() {
   if (audioTabs.length === 0) {
     showNoAudioMessage();
@@ -101,6 +138,9 @@ function renderTabList() {
   });
 }
 
+/**
+ * Create a tab element for the UI
+ */
 function createTabElement(tab) {
   const tabDiv = document.createElement('div');
   tabDiv.className = 'tab-item';
@@ -129,7 +169,15 @@ function createTabElement(tab) {
     </div>
   `;
 
-  // Set up events
+  // Set up event listeners for this tab
+  setupTabEvents(tabDiv, tab);
+  return tabDiv;
+}
+
+/**
+ * Set up event listeners for a tab element
+ */
+function setupTabEvents(tabDiv, tab) {
   const slider = tabDiv.querySelector('.volume-slider');
   const tabVolumeDisplay = tabDiv.querySelector('.tab-volume-display');
   
@@ -144,27 +192,30 @@ function createTabElement(tab) {
       updateTabVolume(tab.id, volume, tabVolumeDisplay);
     });
   });
-
-  return tabDiv;
 }
 
+/**
+ * Update volume for a specific tab
+ */
 function updateTabVolume(tabId, volume, tabVolumeDisplay) {
   // Update display immediately
   tabVolumeDisplay.textContent = `${volume}%`;
-  
-  const volumeClass = getVolumeClass(volume);
-  tabVolumeDisplay.className = `tab-volume-display ${volumeClass}`;
+  tabVolumeDisplay.className = `tab-volume-display ${getVolumeClass(volume)}`;
 
-  // Send to tab
+  // Send to tab and background
   browser.tabs.sendMessage(tabId, { action: 'setVolume', volume })
     .then(() => {
       browser.runtime.sendMessage({ action: 'setVolume', tabId, volume });
+      // Update local state
       const tab = audioTabs.find(t => t.id === tabId);
       if (tab) tab.volume = volume;
     })
     .catch(console.error);
 }
 
+/**
+ * Get CSS class based on volume level
+ */
 function getVolumeClass(volume) {
   if (volume === 0) return 'volume-muted';
   if (volume < 50) return 'volume-low';
@@ -172,6 +223,9 @@ function getVolumeClass(volume) {
   return 'volume-normal';
 }
 
+/**
+ * Show message when no audio tabs are found
+ */
 function showNoAudioMessage() {
   tabList.innerHTML = `
     <div class="no-audio">
@@ -181,4 +235,5 @@ function showNoAudioMessage() {
   `;
 }
 
+// Initialize when DOM is ready
 document.addEventListener('DOMContentLoaded', init);

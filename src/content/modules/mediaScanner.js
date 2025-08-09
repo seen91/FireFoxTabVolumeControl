@@ -14,18 +14,15 @@ class MediaScanner {
    * Scan for media elements in the document
    */
   scanForMediaElements() {
-    const existingElements = document.querySelectorAll('audio, video');
-    
-    // Register any new elements
-    existingElements.forEach(element => {
+    // Scan for direct audio/video elements
+    document.querySelectorAll('audio, video').forEach(element => {
       this.mediaRegistry.registerMediaElement(element);
     });
     
-    // More aggressive scanning for sites that might hide audio/video elements
+    // Scan nested elements in common containers
     ADDITIONAL_SELECTORS.forEach(selector => {
       try {
         document.querySelectorAll(selector).forEach(container => {
-          // Check for nested audio/video elements
           container.querySelectorAll('audio, video').forEach(element => {
             this.mediaRegistry.registerMediaElement(element);
           });
@@ -35,11 +32,17 @@ class MediaScanner {
       }
     });
     
-    // Check shadow DOM elements
+    // Scan shadow DOM elements
     this.scanShadowDOMElements();
     
     // Call site-specific detection if available
-    this.callSiteSpecificDetection();
+    if (typeof window.detectSiteAudio === 'function') {
+      try { 
+        window.detectSiteAudio(); 
+      } catch (e) {
+        // Silently handle errors from site-specific detection
+      }
+    }
   }
 
   /**
@@ -60,19 +63,6 @@ class MediaScanner {
   }
 
   /**
-   * Call site-specific audio detection if available
-   */
-  callSiteSpecificDetection() {
-    if (typeof window.detectSiteAudio === 'function') {
-      try { 
-        window.detectSiteAudio(); 
-      } catch (e) {
-        // Silently handle errors from site-specific detection
-      }
-    }
-  }
-
-  /**
    * Set up observers for dynamic content
    */
   setupObservers() {
@@ -84,7 +74,7 @@ class MediaScanner {
           this.handleAddedNode(node);
         });
         
-        // Handle removed nodes - clean up media elements
+        // Handle removed nodes
         mutation.removedNodes.forEach((node) => {
           this.handleRemovedNode(node);
         });
@@ -106,7 +96,6 @@ class MediaScanner {
 
   /**
    * Handle nodes added to the DOM
-   * @param {Node} node - Added node
    */
   handleAddedNode(node) {
     if (node.nodeType === Node.ELEMENT_NODE) {
@@ -123,7 +112,6 @@ class MediaScanner {
 
   /**
    * Handle nodes removed from the DOM
-   * @param {Node} node - Removed node
    */
   handleRemovedNode(node) {
     if (node.nodeType === Node.ELEMENT_NODE) {

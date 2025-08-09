@@ -25,15 +25,12 @@
   },
   "content_scripts": [{
     "matches": ["<all_urls>"],
-    "js": [
-      "src/content/moduleLoader.js",
-      "src/content/content.js"
-    ],
+    "js": ["src/content/content.js"],
     "run_at": "document_start"
   }],
   "web_accessible_resources": [{
     "resources": [
-      "src/content/siteHandlers/*.js",
+      "src/content/siteHandlers/standardHandler.js",
       "src/content/modules/*.js"
     ],
     "matches": ["<all_urls>"]

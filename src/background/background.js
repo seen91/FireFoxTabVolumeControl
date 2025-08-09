@@ -3,16 +3,39 @@ const tabVolumes = new Map();
 const audioTabs = new Set();
 const defaultVolume = 100;
 
+// Notify popup about audio status changes
+function notifyPopupUpdate() {
+  browser.runtime.sendMessage({ action: 'audioStatusChanged' }).catch(() => {
+    // Popup might not be open, that's fine
+  });
+}
+
 // Track audio tabs and clean up on changes
 browser.tabs.onUpdated.addListener((tabId, changeInfo) => {
   if (changeInfo.audible !== undefined) {
-    changeInfo.audible ? audioTabs.add(tabId) : audioTabs.delete(tabId);
+    const wasAudioTab = audioTabs.has(tabId);
+    if (changeInfo.audible) {
+      audioTabs.add(tabId);
+    } else {
+      audioTabs.delete(tabId);
+    }
+    
+    // Notify popup if audio status changed
+    if (wasAudioTab !== audioTabs.has(tabId)) {
+      notifyPopupUpdate();
+    }
   }
 });
 
 browser.tabs.onRemoved.addListener((tabId) => {
   tabVolumes.delete(tabId);
+  const wasAudioTab = audioTabs.has(tabId);
   audioTabs.delete(tabId);
+  
+  // Notify popup if an audio tab was removed
+  if (wasAudioTab) {
+    notifyPopupUpdate();
+  }
 });
 
 // Handle messages
@@ -34,7 +57,14 @@ browser.runtime.onMessage.addListener((message, sender, sendResponse) => {
 
     case 'notifyAudio':
       if (tabId) {
+        const wasAudioTab = audioTabs.has(tabId);
         audioTabs.add(tabId);
+        
+        // Notify popup if this is a new audio tab
+        if (!wasAudioTab) {
+          notifyPopupUpdate();
+        }
+        
         sendResponse({ success: true });
       }
       break;

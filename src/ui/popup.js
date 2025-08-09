@@ -19,6 +19,13 @@ function init() {
     });
   }
 
+  // Listen for audio status changes from background script
+  browser.runtime.onMessage.addListener((message) => {
+    if (message.action === 'audioStatusChanged') {
+      loadAudioTabs();
+    }
+  });
+
   // Set up events
   masterVolumeSlider.addEventListener('input', (e) => {
     masterVolume = parseInt(e.target.value);

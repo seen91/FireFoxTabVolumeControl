@@ -22,37 +22,28 @@ function initAudioContext() {
 
 // Apply volume to media element
 function applyVolumeToElement(element, volume) {
-  try {
-    if (volume <= 100) {
-      // For volume <= 100%, use HTML5 volume property
-      element.volume = volume / 100;
-      
-      // If we have Web Audio API connection, we need to maintain it
-      // but set gain to 1.0 and rely on element.volume for reduction
-      if (element.volumeSource && gainNode) {
-        gainNode.gain.value = 1.0;
-      }
-    } else {
-      // For amplification (>100%), we need Web Audio API
-      if (initAudioContext() && !element.volumeSource) {
-        try {
-          const source = audioContext.createMediaElementSource(element);
-          source.connect(gainNode);
-          element.volumeSource = source;
-          element.volume = 1; // Keep element at full volume
-          gainNode.gain.value = volume / 100;
-        } catch (error) {
-          console.warn('Web Audio setup failed, using fallback:', error);
-          element.volume = 1; // Fallback to max volume
-        }
-      } else if (gainNode) {
-        // Already connected to Web Audio, just update gain
-        element.volume = 1;
-        gainNode.gain.value = volume / 100;
+  // For volume reduction (0-100%), use HTML5 volume property
+  if (volume <= 100) {
+    element.volume = volume / 100;
+  } else {
+    // For amplification (>100%), set to max and use gain node
+    element.volume = 1.0;
+    
+    // Initialize audio context for amplification if needed
+    if (!audioContext && volume > 100) {
+      initAudioContext();
+    }
+    
+    // Connect element to gain node for amplification
+    if (audioContext && gainNode && volume > 100) {
+      try {
+        const source = audioContext.createMediaElementSource(element);
+        source.connect(gainNode);
+      } catch (e) {
+        // Element might already be connected or have issues
+        console.warn('Could not connect element to audio context:', e);
       }
     }
-  } catch (error) {
-    console.error('Volume application failed:', error);
   }
 }
 
@@ -100,6 +91,45 @@ function scanForMediaElements() {
   
   // Register any new elements
   existingElements.forEach(registerMediaElement);
+  
+  // More aggressive scanning for sites that might hide audio/video elements
+  const additionalSelectors = [
+    '[class*="video"]',
+    '[class*="Video"]', 
+    '[class*="player"]',
+    '[class*="Player"]',
+    '[class*="media"]',
+    '[class*="Media"]',
+    '[data-testid*="video"]',
+    '[data-testid*="media"]',
+    '[data-testid*="player"]'
+  ];
+  
+  additionalSelectors.forEach(selector => {
+    try {
+      document.querySelectorAll(selector).forEach(container => {
+        // Check for nested audio/video elements
+        container.querySelectorAll('audio, video').forEach(element => {
+          registerMediaElement(element);
+        });
+      });
+    } catch (e) {
+      // Silently handle errors for unsupported selectors
+    }
+  });
+  
+  // Check shadow DOM elements
+  document.querySelectorAll('*').forEach(element => {
+    if (element.shadowRoot) {
+      try {
+        element.shadowRoot.querySelectorAll('audio, video').forEach(shadowElement => {
+          registerMediaElement(shadowElement);
+        });
+      } catch (e) {
+        // Shadow DOM access might be restricted
+      }
+    }
+  });
   
   // Call site-specific detection if available
   if (typeof window.detectSiteAudio === 'function') {

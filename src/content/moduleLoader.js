@@ -1,6 +1,5 @@
 // Simple module loader for site-specific handlers
 const handlers = {
-  '9gag.com': 'src/content/siteHandlers/9gagHandler.js',
   standard: 'src/content/siteHandlers/standardHandler.js'
 };
 

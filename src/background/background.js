@@ -96,9 +96,6 @@ browser.tabs.onUpdated.addListener((tabId, changeInfo) => {
     const hostname = url.hostname.toLowerCase();
     
     let handlerName = 'standardHandler';
-    if (hostname.includes('9gag.com')) {
-      handlerName = '9gagHandler';
-    }
     
     // Only log and update if handler actually changed
     const currentHandler = tabHandlers.get(tabId);

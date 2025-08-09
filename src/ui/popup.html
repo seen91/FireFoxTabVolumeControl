@@ -139,6 +139,30 @@
             background: #1557b0;
         }
 
+        .master-action-buttons {
+            display: flex;
+            gap: 8px;
+            margin-top: 8px;
+        }
+
+        .master-action-btn {
+            flex: 1;
+            padding: 6px 8px;
+            border: 1px solid #e1e4e8;
+            background: white;
+            color: #333;
+            border-radius: 4px;
+            cursor: pointer;
+            font-size: 11px;
+            font-weight: 500;
+            transition: all 0.2s;
+        }
+
+        .master-action-btn:hover {
+            background: #f5f5f5;
+            border-color: #ccc;
+        }
+
         .tab-list {
             max-height: 300px;
             overflow-y: auto;
@@ -189,40 +213,6 @@
         .volume-low { background: #fff3e0; color: #d84315; }
         .volume-high { background: #e3f2fd; color: #1976d2; }
         .volume-muted { background: #ffebee; color: #d32f2f; }
-
-        .global-controls {
-            border-top: 1px solid #e1e4e8;
-            padding-top: 16px;
-            margin-top: 16px;
-        }
-
-        .global-title {
-            font-weight: 600;
-            margin-bottom: 12px;
-            color: #333;
-        }
-
-        .global-buttons {
-            display: flex;
-            gap: 8px;
-        }
-
-        .global-btn {
-            flex: 1;
-            padding: 8px 12px;
-            border: 1px solid #e1e4e8;
-            background: white;
-            color: #333;
-            border-radius: 4px;
-            cursor: pointer;
-            font-size: 12px;
-            transition: all 0.2s;
-        }
-
-        .global-btn:hover {
-            background: #f5f5f5;
-            border-color: #ccc;
-        }
 
         .no-audio {
             text-align: center;
@@ -299,6 +289,17 @@
             background: #00c4e6;
         }
 
+        body.dark-theme .master-action-btn {
+            border: 1px solid #4c4c4f;
+            background: #38383d;
+            color: #f9f9fa;
+        }
+
+        body.dark-theme .master-action-btn:hover {
+            background: #4c4c4f;
+            border-color: #5c5c5f;
+        }
+
         body.dark-theme .tab-item {
             background: #38383d;
             border: 1px solid #4c4c4f;
@@ -328,25 +329,6 @@
             color: #ff6666; 
         }
 
-        body.dark-theme .global-controls {
-            border-top: 1px solid #4c4c4f;
-        }
-
-        body.dark-theme .global-title {
-            color: #f9f9fa;
-        }
-
-        body.dark-theme .global-btn {
-            border: 1px solid #4c4c4f;
-            background: #38383d;
-            color: #f9f9fa;
-        }
-
-        body.dark-theme .global-btn:hover {
-            background: #4c4c4f;
-            border-color: #5c5c5f;
-        }
-
         body.dark-theme .no-audio {
             color: #cfcfd8;
         }
@@ -360,7 +342,7 @@
     <div class="header">Tab Volume Control</div>
 
     <div class="master-control">
-        <div class="master-title">Master Volume Control</div>
+        <div class="master-title">Master Control</div>
         <div class="volume-container">
             <div class="volume-slider-container">
                 <span class="volume-label">0%</span>
@@ -375,19 +357,15 @@
                 <button class="preset-btn" data-volume="500">500%</button>
             </div>
             <button id="applyToAllBtn" class="apply-all-btn">Apply to All Tabs</button>
+            <div class="master-action-buttons">
+                <button id="refreshBtn" class="master-action-btn">Refresh Tab List</button>
+                <button id="resetBtn" class="master-action-btn">Reset All Tabs</button>
+            </div>
         </div>
     </div>
 
     <div id="tabList" class="tab-list">
         <div class="loading">Loading audio tabs...</div>
-    </div>
-
-    <div class="global-controls">
-        <div class="global-title">Global Settings</div>
-        <div class="global-buttons">
-            <button id="refreshBtn" class="global-btn">Refresh Tab List</button>
-            <button id="resetBtn" class="global-btn">Reset All Tabs</button>
-        </div>
     </div>
 
     <script src="themeManager.js"></script>

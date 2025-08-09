@@ -1,6 +1,6 @@
 // Simple module loader for site-specific handlers
 const handlers = {
-  standard: 'src/content/site-handlers/standardHandler.js'
+  standard: 'src/content/siteHandlers/standardHandler.js'
 };
 
 // Load and initialize the standard handler

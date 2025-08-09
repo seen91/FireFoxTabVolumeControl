@@ -33,7 +33,7 @@
   }],
   "web_accessible_resources": [{
     "resources": [
-      "src/content/site-handlers/*.js"
+      "src/content/siteHandlers/*.js"
     ],
     "matches": ["<all_urls>"]
   }],

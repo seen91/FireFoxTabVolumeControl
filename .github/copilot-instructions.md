@@ -12,7 +12,7 @@ Firefox Tab Volume Control is a browser extension that enables users to control 
 
 1. **Content Scripts**: 
    - `content.js` - Main content script with core audio manipulation logic
-   - `site-handlers/*.js` - Site-specific implementations, example standard-handler.js
+   - `siteHandlers/*.js` - Site-specific implementations, example standard-handler.js
 
 2. **Background Service Worker**:
    - `background.js` - Manages tab state, volume settings, and cross-tab coordination
@@ -50,36 +50,6 @@ The extension uses the Web Audio API to modify audio output:
 ### Site-Specific Handlers
 
 Site handlers implement specialized logic for websites with unique audio implementations.
-
-## Common Patterns
-
-1. **Audio Element Detection**:
-   - Use MutationObserver to track DOM changes
-   - Hook original methods (createElement, Audio constructor)
-   - Monitor "play" events at document level
-   - Use site-specific selectors when necessary
-
-2. **Volume Control**:
-   - Apply volume using GainNode for amplification (>100%)
-   - Use direct volume property for reduction (≤100%)
-   - Implement site-specific volume control when needed
-   - Handle both standard and custom media elements
-
-3. **Message Handling**:
-   - Standard action types:
-     - `"setVolume"` - Change volume for a tab
-     - `"getVolume"` - Retrieve current volume
-     - `"checkForAudio"` - Detect audio capabilities
-     - `"notifyAudio"` - Report that a tab has audio
-     - `"volumeChanged"` - Notify about volume change
-     - `"getTabAudioStatus"` - Get audio status for all tabs
-     - `"saveDomainVolume"` - Save volume settings per domain
-
-4. **Error Handling**:
-   - Graceful fallbacks when APIs aren't available
-   - Comprehensive try/catch blocks
-   - Recovery mechanisms for edge cases
-   - Informative logging for debugging
 
 ## State Management
 
@@ -140,70 +110,6 @@ Site handlers implement specialized logic for websites with unique audio impleme
    - Include only necessary permissions
    - Specify correct content script matches
    - Configure appropriate run_at timing
-
-## Common Implementation Tasks
-
-When extending the extension:
-
-1. **Adding Support for a New Site**:
-   ```javascript
-   // 1. Create a new handler file in site-handlers/
-   // example: site-handlers/spotify-handler.js
-   
-   // 2. Update module-loader.js to include the new site
-   const MODULES = {
-     // existing modules...
-     spotify: {
-       pattern: /spotify\.com/,
-       name: 'Spotify',
-       path: 'site-handlers/spotify-handler.js'
-     },
-   };
-   
-   // 3. Implement site-specific functions in the handler:
-   function initSpotifyVolumeControl() {
-     // Spotify-specific initialization
-   }
-   
-   function setSpotifyVolume(volumeLevel) {
-     // Spotify-specific volume control
-   }
-   ```
-
-2. **Fixing Audio Detection Issues**:
-   ```javascript
-   // Improve detection for specific site elements
-   function findCustomAudioElements() {
-     // Find elements by site-specific selectors
-     const customPlayers = document.querySelectorAll('.site-player, .audio-container');
-     
-     customPlayers.forEach(player => {
-       // Look for audio/video elements or custom controls
-       const mediaElements = player.querySelectorAll('audio, video');
-       mediaElements.forEach(handleMediaElement);
-       
-       // Check for custom controls
-       if (player.querySelector('.volume-slider')) {
-         // Handle custom controls
-       }
-     });
-   }
-   ```
-
-3. **Enhancing Message Handling**:
-   ```javascript
-   // Add a new message action
-   browser.runtime.onMessage.addListener((message, sender, sendResponse) => {
-     // Existing handlers...
-     
-     if (message.action === "newCustomAction") {
-       // Handle the new action
-       const result = performCustomAction(message.params);
-       sendResponse({ success: true, data: result });
-       return true; // Indicates async response
-     }
-   });
-   ```
 
 ## Resources
 

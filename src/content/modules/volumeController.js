@@ -12,27 +12,28 @@ class VolumeController {
 
   /**
    * Apply volume to a specific media element
-   * N (native controller) × AM (amplitude modification) = Output volume
-   * Respects user's native volume setting and applies amplification on top
    * @param {HTMLMediaElement} element - Element to apply volume to
    * @param {number} volume - Volume percentage (optional, uses current volume if not provided)
    */
   applyVolumeToElement(element, volume = this.currentVolume) {
-    // Store the current native volume to preserve user's setting
-    const currentNativeVolume = element.volume;
+    // For volume reduction (0-100%), always use HTML5 volume property
+    if (volume <= VOLUME_AMPLIFICATION_THRESHOLD) {
+      element.volume = volume / VOLUME_MAX;
+      return;
+    }
+    
+    // For amplification (>100%), check if we should block this element/site
+    element.volume = VOLUME_NATIVE_MAX;
     
     // Early check for cross-origin or blocked sites
     if (this.audioManager.shouldBlockAmplification(element)) {
-      // Fallback: use only native volume control if Web Audio API is blocked
-      element.volume = Math.min(volume / VOLUME_MAX, VOLUME_NATIVE_MAX);
+      // Don't attempt Web Audio API - element is cross-origin or site is blocked
       return;
     }
     
     // Initialize audio context if needed
     if (!this.audioManager.audioContext && !this.audioManager.initAudioContext()) {
       this.audioManager.markSiteAsBlocked();
-      // Fallback: use only native volume control
-      element.volume = Math.min(volume / VOLUME_MAX, VOLUME_NATIVE_MAX);
       return;
     }
     
@@ -40,21 +41,14 @@ class VolumeController {
     if (this.audioManager.audioContext && this.audioManager.gainNode) {
       const connected = this.audioManager.tryConnectToAudioContext(element);
       if (!connected) {
-        // If connection failed, fallback to native volume control
-        element.volume = Math.min(volume / VOLUME_MAX, VOLUME_NATIVE_MAX);
+        // If connection failed, this site doesn't support Web Audio API properly
         return;
       }
-      
-      // If Web Audio API is available, preserve the user's native volume setting
-      // The gain node will handle amplification: N (current native) × AM (gain) = Output
-      // Don't override the native volume - let user control it naturally
     }
   }
 
   /**
    * Set volume for all media elements
-   * Uses formula: N (native controller) × AM (amplitude modification) = Output volume
-   * Where N is the user's current native volume setting, and AM is the extension's gain
    * @param {number} volume - Volume percentage
    * @param {MediaElementRegistry} mediaRegistry - Registry of media elements
    */
@@ -68,8 +62,7 @@ class VolumeController {
       });
     }
     
-    // Update gain node with the amplitude modification value
-    // This multiplies with whatever the user's native volume is set to
+    // Only update gain node if we have successfully connected elements and site isn't blocked
     this.audioManager.setGainValue(volume);
     
     // Call site-specific handler if available

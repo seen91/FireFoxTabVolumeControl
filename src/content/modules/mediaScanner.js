@@ -15,20 +15,30 @@ class MediaScanner {
    */
   scanForMediaElements() {
     // Scan for direct audio/video elements
-    document.querySelectorAll('audio, video').forEach(element => {
+    const directElements = document.querySelectorAll('audio, video');
+    directElements.forEach(element => {
       this.mediaRegistry.registerMediaElement(element);
     });
     
     // Scan nested elements in common containers
     ADDITIONAL_SELECTORS.forEach(selector => {
       try {
-        document.querySelectorAll(selector).forEach(container => {
-          container.querySelectorAll('audio, video').forEach(element => {
+        const containers = document.querySelectorAll(selector);
+        
+        containers.forEach(container => {
+          // Look for nested audio/video
+          const nestedElements = container.querySelectorAll('audio, video');
+          nestedElements.forEach(element => {
             this.mediaRegistry.registerMediaElement(element);
           });
+          
+          // Special handling for custom players with shadow DOM
+          if (container.tagName && container.tagName.toLowerCase().includes('shreddit')) {
+            this.handleCustomPlayer(container);
+          }
         });
       } catch (e) {
-        // Silently handle errors for unsupported selectors
+        console.warn(`Error scanning selector "${selector}":`, e);
       }
     });
     
@@ -40,9 +50,49 @@ class MediaScanner {
       try { 
         window.detectSiteAudio(); 
       } catch (e) {
-        // Silently handle errors from site-specific detection
+        console.warn('Error in site-specific detection:', e);
       }
     }
+  }
+
+  /**
+   * Handle custom video player components with shadow DOM
+   * @param {Element} playerElement - The custom player element
+   */
+  handleCustomPlayer(playerElement) {
+    // Check if shadow root exists and scan it
+    if (playerElement.shadowRoot) {
+      playerElement.shadowRoot.querySelectorAll('audio, video').forEach(element => {
+        this.mediaRegistry.registerMediaElement(element);
+      });
+    }
+    
+    // Set up observer for when media elements are added to this player
+    const observer = new MutationObserver((mutations) => {
+      mutations.forEach((mutation) => {
+        mutation.addedNodes.forEach((node) => {
+          if (node.nodeType === Node.ELEMENT_NODE) {
+            if (node.tagName === 'AUDIO' || node.tagName === 'VIDEO') {
+              this.mediaRegistry.registerMediaElement(node);
+            }
+            if (node.querySelectorAll) {
+              node.querySelectorAll('audio, video').forEach(element => {
+                this.mediaRegistry.registerMediaElement(element);
+              });
+            }
+          }
+        });
+      });
+    });
+    
+    observer.observe(playerElement, { childList: true, subtree: true });
+    
+    // Also wait a bit and re-scan, as custom players may load media elements asynchronously
+    setTimeout(() => {
+      playerElement.querySelectorAll('audio, video').forEach(element => {
+        this.mediaRegistry.registerMediaElement(element);
+      });
+    }, 1000);
   }
 
   /**

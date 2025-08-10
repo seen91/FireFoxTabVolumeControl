@@ -24,15 +24,28 @@ class VolumeController {
       // Fallback: Use HTML5 volume property, but limit to 0-100% range
       const clampedVolume = Math.min(volume, VOLUME_AMPLIFICATION_THRESHOLD);
       element.volume = clampedVolume / VOLUME_MAX;
+      
+      console.log('📉 Tab Volume Control: Using HTML5 fallback (0-100% only)', {
+        element: element.tagName,
+        requestedVolume: volume,
+        appliedVolume: clampedVolume,
+        reason: 'Cross-origin or blocked site'
+      });
       return;
     }
     
     // Initialize audio context if needed
     if (!this.audioManager.audioContext && !this.audioManager.initAudioContext()) {
-      this.audioManager.markSiteAsBlocked();
       // Fallback: Use HTML5 volume property, but limit to 0-100% range
       const clampedVolume = Math.min(volume, VOLUME_AMPLIFICATION_THRESHOLD);
       element.volume = clampedVolume / VOLUME_MAX;
+      
+      console.log('📉 Tab Volume Control: Using HTML5 fallback (0-100% only)', {
+        element: element.tagName,
+        requestedVolume: volume,
+        appliedVolume: clampedVolume,
+        reason: 'AudioContext initialization failed'
+      });
       return;
     }
     
@@ -43,8 +56,21 @@ class VolumeController {
         // If connection failed, fallback to HTML5 volume property (0-100% only)
         const clampedVolume = Math.min(volume, VOLUME_AMPLIFICATION_THRESHOLD);
         element.volume = clampedVolume / VOLUME_MAX;
+        
+        console.log('📉 Tab Volume Control: Using HTML5 fallback (0-100% only)', {
+          element: element.tagName,
+          requestedVolume: volume,
+          appliedVolume: clampedVolume,
+          reason: 'Web Audio API connection failed'
+        });
         return;
       }
+      
+      console.log('🔊 Tab Volume Control: Web Audio API mode (0-500% possible)', {
+        element: element.tagName,
+        requestedVolume: volume,
+        gainValue: volume / VOLUME_MAX
+      });
     }
   }
 

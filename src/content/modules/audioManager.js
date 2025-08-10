@@ -60,34 +60,46 @@ class AudioManager {
       element.querySelector('source')?.src
     ].filter(Boolean);
     
-    if (sources.length === 0) return false;
+    if (sources.length === 0) {
+      return false;
+    }
     
     try {
       const pageOrigin = window.location.origin;
-      return sources.some(src => new URL(src).origin !== pageOrigin);
+      return sources.some(src => {
+        // Handle blob URLs - they are always same-origin
+        if (src.startsWith('blob:')) {
+          return false;
+        }
+        
+        // Handle data URLs - they are always same-origin
+        if (src.startsWith('data:')) {
+          return false;
+        }
+        
+        // Check if the source origin differs from the page origin
+        const srcOrigin = new URL(src).origin;
+        return srcOrigin !== pageOrigin;
+      });
     } catch (e) {
-      return true; // Assume cross-origin if URL parsing fails
-    }
-  }
-
-  /**
-   * Check if amplification should be blocked for this element/site
-   * @param {HTMLMediaElement} element - Audio or video element to check
-   * @returns {boolean} True if amplification should be blocked
-   */
-  shouldBlockAmplification(element) {
-    if (this.isSiteBlocked()) return true;
-    
-    if (this.isCrossOriginElement(element)) {
-      this.markSiteAsBlocked();
+      // If URL parsing fails, assume cross-origin for safety
       return true;
     }
-    
-    return false;
   }
 
   /**
-   * Try to connect element to Web Audio API, detect if blocked
+   * Check if amplification should be blocked for this element
+   * @param {HTMLMediaElement} element - Audio or video element to check
+   * @returns {boolean} True if amplification should be blocked for this specific element
+   */
+  shouldBlockAmplification(element) {
+    // Check this specific element for cross-origin issues
+    // Don't block the entire site - just this element
+    return this.isCrossOriginElement(element);
+  }
+
+  /**
+   * Try to connect element to Web Audio API
    * @param {HTMLMediaElement} element - Media element to connect
    * @returns {boolean} True if connection was successful
    */
@@ -106,8 +118,7 @@ class AudioManager {
       element._audioSource = source;
       return true;
     } catch (e) {
-      // Site blocks Web Audio API connection - mark as blocked
-      this.markSiteAsBlocked();
+      // Connection failed - this element cannot use Web Audio API
       return false;
     }
   }

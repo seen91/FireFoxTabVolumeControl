@@ -16,7 +16,11 @@ export const ADDITIONAL_SELECTORS = [
   '[class*="media"]',
   '[data-testid*="video"]',
   '[data-testid*="media"]',
-  '[data-testid*="player"]'
+  '[data-testid*="player"]',
+  // Site-specific selectors
+  'shreddit-player-2',
+  'shreddit-player',
+  '[class*="shreddit"]'
 ];
 
 // Default values

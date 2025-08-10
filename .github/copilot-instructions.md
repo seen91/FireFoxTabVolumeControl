@@ -19,6 +19,7 @@ Firefox Tab Volume Control is a browser extension that enables users to control 
    - Add JSDoc comments for all functions
    - Include parameter and return type documentation
    - Explain complex logic with inline comments
+   - Dont create new markdown files unless explicitly requested
 
 3. **Error Handling**:
    - Use try/catch blocks around risky operations

@@ -5,7 +5,6 @@
 // Volume configuration
 export const VOLUME_MAX = 100;
 export const VOLUME_AMPLIFICATION_THRESHOLD = 100;
-export const VOLUME_NATIVE_MAX = 1.0;
 
 // Timing configuration  
 export const HOSTNAME_CHECK_INTERVAL = 2000;

@@ -118,6 +118,9 @@ class AudioManager {
    */
   setGainValue(volume) {
     if (this.gainNode && !this.isSiteBlocked() && this.connectedElements.size > 0) {
+      // For amplification, we want to amplify based on the extension volume setting
+      // The gain represents how much to amplify beyond 100%
+      // For example: 200% extension volume = 2x amplification
       this.gainNode.gain.value = volume / VOLUME_MAX;
     }
   }

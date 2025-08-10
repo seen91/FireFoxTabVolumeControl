@@ -20,7 +20,9 @@ export const ADDITIONAL_SELECTORS = [
   // Site-specific selectors
   'shreddit-player-2',
   'shreddit-player',
-  '[class*="shreddit"]'
+  '[class*="shreddit"]',
+  '.post-view',
+  '.video-post'
 ];
 
 // Default values

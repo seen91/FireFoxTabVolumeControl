@@ -5,49 +5,57 @@ Write-Host "Firefox Tab Volume Control - Release Builder" -ForegroundColor Cyan
 
 # Get version from manifest.json
 $version = (Get-Content manifest.json | ConvertFrom-Json).version
-$zipName = "tab-volume-control-v$version.zip"
+$zipName = "tab-volume-control-v$version-fixed.zip"
 
 Write-Host "Building version: $version" -ForegroundColor Yellow
 
 # Remove existing ZIP if it exists
 if (Test-Path $zipName) { 
-    Remove-Item $zipName 
-    Write-Host "Removed existing package" -ForegroundColor Yellow
+    try {
+        Remove-Item $zipName -Force
+        Write-Host "Removed existing package" -ForegroundColor Yellow
+    } catch {
+        Write-Host "Warning: Could not remove existing package, using new name" -ForegroundColor Yellow
+        $zipName = "tab-volume-control-v$version-$(Get-Date -Format 'yyyyMMdd-HHmmss').zip"
+    }
 }
 
 # Create the release package
 Write-Host "Creating release package..." -ForegroundColor Yellow
 
-# Use .NET compression to ensure proper path separators for cross-platform compatibility
+# Use .NET compression to ensure proper forward slash path separators for Firefox
+Add-Type -AssemblyName System.IO.Compression
 Add-Type -AssemblyName System.IO.Compression.FileSystem
 
 # Create the ZIP file
 $zip = [System.IO.Compression.ZipFile]::Open($zipName, [System.IO.Compression.ZipArchiveMode]::Create)
 
-# Function to add files with proper path separators
+# Function to add files with proper forward slash path separators
 function Add-FileToZip($zipArchive, $filePath, $entryName) {
-    # Ensure forward slashes in entry name
+    # Ensure forward slashes in entry name for Firefox compatibility
     $entryName = $entryName -replace '\\', '/'
     $entry = $zipArchive.CreateEntry($entryName)
     $entryStream = $entry.Open()
-    $fileStream = [System.IO.File]::OpenRead($filePath)
-    $fileStream.CopyTo($entryStream)
-    $fileStream.Close()
-    $entryStream.Close()
+    try {
+        $fileStream = [System.IO.File]::OpenRead($filePath)
+        try {
+            $fileStream.CopyTo($entryStream)
+        } finally {
+            $fileStream.Close()
+        }
+    } finally {
+        $entryStream.Close()
+    }
 }
 
-# Function to add directory recursively
+# Function to add directory recursively with proper path separators
 function Add-DirectoryToZip($zipArchive, $sourcePath, $entryPath) {
     foreach ($item in Get-ChildItem -Path $sourcePath -Recurse) {
         $relativePath = $item.FullName.Substring((Resolve-Path $sourcePath).Path.Length + 1)
         $entryName = if ($entryPath) { "$entryPath/$relativePath" } else { $relativePath }
         
-        if ($item.PSIsContainer) {
-            # Create directory entry
-            $entryName = ($entryName -replace '\\', '/') + '/'
-            $zip.CreateEntry($entryName) | Out-Null
-        } else {
-            # Add file
+        if (-not $item.PSIsContainer) {
+            # Add file with forward slash paths
             Add-FileToZip $zipArchive $item.FullName $entryName
         }
     }
@@ -62,7 +70,7 @@ try {
     # Add src directory
     Add-DirectoryToZip $zip "src" "src"
     
-    Write-Host "✅ Files added with proper path separators" -ForegroundColor Green
+    Write-Host "✅ Files added with forward slash paths for Firefox compatibility" -ForegroundColor Green
 } finally {
     $zip.Dispose()
 }

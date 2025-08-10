@@ -13,7 +13,8 @@ class AudioManager {
   }
 
   /**
-   * Initialize Web Audio API for amplification
+   * Initialize Web Audio API for volume control
+   * Sets up the gain node for amplitude modification (AM in N × AM = Output)
    * @returns {boolean} True if initialization was successful
    */
   initAudioContext() {
@@ -22,6 +23,10 @@ class AudioManager {
         this.audioContext = new (window.AudioContext || window.webkitAudioContext)();
         this.gainNode = this.audioContext.createGain();
         this.gainNode.connect(this.audioContext.destination);
+        
+        // Initialize with neutral gain (1.0) - no amplitude modification initially
+        this.gainNode.gain.value = 1.0;
+        
         return true;
       } catch (error) {
         console.warn('AudioContext not available:', error);
@@ -87,7 +92,8 @@ class AudioManager {
   }
 
   /**
-   * Try to connect element to Web Audio API, detect if blocked
+   * Try to connect element to Web Audio API for gain control
+   * This enables the N × AM = Output formula where N=user's native volume and AM=gain.value
    * @param {HTMLMediaElement} element - Media element to connect
    * @returns {boolean} True if connection was successful
    */
@@ -104,6 +110,12 @@ class AudioManager {
       
       // Store reference to source for cleanup
       element._audioSource = source;
+      
+      // Resume audio context if it's suspended (browser autoplay policies)
+      if (this.audioContext.state === 'suspended') {
+        this.audioContext.resume();
+      }
+      
       return true;
     } catch (e) {
       // Site blocks Web Audio API connection - mark as blocked
@@ -113,12 +125,24 @@ class AudioManager {
   }
 
   /**
-   * Set the gain value for amplification
+   * Set the gain value for amplitude modification
+   * Uses formula: N (native controller) × AM (amplitude modification) = Output volume
+   * Where N = user's current native volume setting and AM = gain value
    * @param {number} volume - Volume percentage (0-500)
    */
   setGainValue(volume) {
-    if (this.gainNode && !this.isSiteBlocked() && this.connectedElements.size > 0) {
-      this.gainNode.gain.value = volume / VOLUME_MAX;
+    if (this.gainNode) {
+      // Calculate amplitude modification: volume percentage / 100
+      // This multiplies with whatever the user's native volume is currently set to
+      // Result: current_native_volume × (volume/100) = desired output volume
+      const gainValue = volume / VOLUME_MAX;
+      this.gainNode.gain.value = gainValue;
+      
+      // Only apply if we have connected elements and site isn't blocked
+      if (this.isSiteBlocked() || this.connectedElements.size === 0) {
+        // Reset gain to 1.0 if blocked or no connections (no amplification)
+        this.gainNode.gain.value = 1.0;
+      }
     }
   }
 

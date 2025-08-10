@@ -21,7 +21,10 @@
     "default_popup": "src/ui/popup.html"
   },
   "background": {
-    "scripts": ["src/background/background.js"]
+    "scripts": [
+      "src/background/tabManager.js",
+      "src/background/background.js"
+    ]
   },
   "content_scripts": [{
     "matches": ["<all_urls>"],

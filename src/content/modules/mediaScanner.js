@@ -166,11 +166,13 @@ class MediaScanner {
   handleRemovedNode(node) {
     if (node.nodeType === Node.ELEMENT_NODE) {
       if (node.tagName === 'AUDIO' || node.tagName === 'VIDEO') {
-        this.mediaRegistry.cleanupMediaElement(node);
+        // Force disconnect since element is being removed from DOM
+        this.mediaRegistry.cleanupMediaElement(node, true);
       }
       if (node.querySelectorAll) {
         node.querySelectorAll('audio, video').forEach(element => {
-          this.mediaRegistry.cleanupMediaElement(element);
+          // Force disconnect since element is being removed from DOM
+          this.mediaRegistry.cleanupMediaElement(element, true);
         });
       }
     }

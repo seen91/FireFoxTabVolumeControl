@@ -37,22 +37,28 @@ class MediaElementRegistry {
       }
     });
     
+    // Don't clean up on 'ended' or 'error' events for elements still in DOM
+    // Reddit and similar sites may trigger these events during normal operation
+    // but the element remains in DOM and may play again
     element.addEventListener('ended', () => {
-      this.cleanupMediaElement(element);
+      // Only remove from active tracking, keep audio connection for potential reuse
+      // Don't force disconnect unless element is actually removed from DOM
     });
     
     element.addEventListener('error', () => {
-      this.cleanupMediaElement(element);
+      // Only remove from active tracking, keep audio connection for potential reuse
+      // Don't force disconnect unless element is actually removed from DOM
     });
   }
 
   /**
    * Clean up a media element and remove it from tracking
    * @param {HTMLMediaElement} element - Element to cleanup
+   * @param {boolean} forceDisconnect - Force disconnect audio source
    */
-  cleanupMediaElement(element) {
+  cleanupMediaElement(element, forceDisconnect = false) {
     if (this.volumeController && this.volumeController.audioManager) {
-      this.volumeController.audioManager.cleanupAudioSource(element);
+      this.volumeController.audioManager.cleanupAudioSource(element, forceDisconnect);
     }
     this.mediaElements.delete(element);
   }
@@ -92,17 +98,18 @@ class MediaElementRegistry {
         elementsToRemove.push(element);
       }
     });
-    elementsToRemove.forEach(element => this.cleanupMediaElement(element));
+    // Force disconnect for elements that are actually removed from DOM
+    elementsToRemove.forEach(element => this.cleanupMediaElement(element, true));
   }
 
   /**
    * Reset registry state (for navigation)
    */
   reset() {
-    // Clean up all media elements
+    // Clean up all media elements with forced disconnect for navigation
     this.mediaElements.forEach(element => {
       if (this.volumeController && this.volumeController.audioManager) {
-        this.volumeController.audioManager.cleanupAudioSource(element);
+        this.volumeController.audioManager.cleanupAudioSource(element, true);
       }
     });
     this.mediaElements.clear();

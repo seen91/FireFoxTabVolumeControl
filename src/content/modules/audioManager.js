@@ -10,6 +10,7 @@ class AudioManager {
     this.gainNode = null;
     this.connectedElements = new Set();
     this.blockedSites = new Set();
+    this.blockedElements = new WeakSet(); // Track elements that failed Web Audio API connection
   }
 
   /**
@@ -54,6 +55,21 @@ class AudioManager {
    * @returns {boolean} True if element is cross-origin
    */
   isCrossOriginElement(element) {
+    // First check: if element has crossOrigin attribute set but not to 'anonymous' or 'use-credentials'
+    // this indicates potential cross-origin issues
+    if (element.crossOrigin === null && element.currentSrc) {
+      // Element doesn't have crossOrigin set but has a source - check if source is cross-origin
+      try {
+        const srcOrigin = new URL(element.currentSrc).origin;
+        const pageOrigin = window.location.origin;
+        if (srcOrigin !== pageOrigin) {
+          return true; // Cross-origin without CORS setup
+        }
+      } catch (e) {
+        return true; // URL parsing failed, assume cross-origin for safety
+      }
+    }
+    
     const sources = [
       element.src,
       element.currentSrc,
@@ -93,6 +109,11 @@ class AudioManager {
    * @returns {boolean} True if amplification should be blocked for this specific element
    */
   shouldBlockAmplification(element) {
+    // Check if this specific element was previously blocked
+    if (this.blockedElements.has(element)) {
+      return true;
+    }
+    
     // Check this specific element for cross-origin issues
     // Don't block the entire site - just this element
     return this.isCrossOriginElement(element);
@@ -109,6 +130,20 @@ class AudioManager {
     // Check if already connected
     if (this.connectedElements.has(element)) return true;
     
+    // Check if element already has an audio source attached (from previous connection)
+    if (element._audioSource) {
+      // Element was previously connected, just add it back to our tracking
+      this.connectedElements.add(element);
+      return true;
+    }
+    
+    // Double-check for cross-origin issues right before attempting connection
+    // This is important because element sources can change dynamically (like on Reddit)
+    if (this.shouldBlockAmplification(element)) {
+      console.warn('Cross-origin content detected, skipping Web Audio API connection');
+      return false;
+    }
+    
     try {
       const source = this.audioContext.createMediaElementSource(element);
       source.connect(this.gainNode);
@@ -119,6 +154,17 @@ class AudioManager {
       return true;
     } catch (e) {
       // Connection failed - this element cannot use Web Audio API
+      // This could be due to cross-origin restrictions or element already being connected
+      console.warn('Failed to connect media element to AudioContext:', e.message);
+      
+      // Mark this element as blocked to prevent future attempts
+      this.blockedElements.add(element);
+      
+      // If this was a cross-origin error, mark the site as problematic
+      if (e.message.includes('cross-origin') || e.message.includes('Cross-origin')) {
+        console.warn('Cross-origin error detected, this element will use HTML5 fallback');
+      }
+      
       return false;
     }
   }
@@ -147,15 +193,24 @@ class AudioManager {
   /**
    * Cleanup audio source for a specific element
    * @param {HTMLMediaElement} element - Element to cleanup
+   * @param {boolean} forceDisconnect - Force disconnect even if element is still in DOM
    */
-  cleanupAudioSource(element) {
-    if (element._audioSource) {
-      try {
-        element._audioSource.disconnect();
-      } catch (e) {}
-      delete element._audioSource;
+  cleanupAudioSource(element, forceDisconnect = false) {
+    // Only fully disconnect if the element is being removed from DOM or explicitly forced
+    // For temporary pauses/stops, keep the connection intact for reuse
+    if (forceDisconnect || !document.contains(element)) {
+      if (element._audioSource) {
+        try {
+          element._audioSource.disconnect();
+        } catch (e) {}
+        delete element._audioSource;
+      }
+      this.connectedElements.delete(element);
+    } else {
+      // Element is still in DOM, just remove from active tracking but keep the connection
+      // This allows for quick reconnection when audio resumes
+      this.connectedElements.delete(element);
     }
-    this.connectedElements.delete(element);
   }
 
   /**
@@ -164,6 +219,9 @@ class AudioManager {
   reset() {
     // Clear blocked sites cache since we're on a new site
     this.blockedSites.clear();
+    
+    // Clear blocked elements cache
+    this.blockedElements = new WeakSet();
     
     // Clean up existing audio context and connected elements
     if (this.audioContext) {

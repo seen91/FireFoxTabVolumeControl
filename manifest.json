@@ -1,7 +1,7 @@
 {
   "manifest_version": 3,
   "name": "Tab Volume Control",
-  "version": "2.0.1",
+  "version": "2.0.2",
   "description": "Control volume for individual browser tabs from 0% to 500%. I originally created this for my personal use after being tired of looking through shady add-ons with overreaching permissions.",
   "permissions": [
     "activeTab",

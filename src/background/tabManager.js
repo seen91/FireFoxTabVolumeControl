@@ -43,6 +43,9 @@ class TabManager {
    * @returns {number} Volume level
    */
   getTabVolume(tabId) {
+    if (tabId === undefined || tabId === null) {
+      return this.DEFAULT_VOLUME;
+    }
     return this.tabVolumes.get(tabId) || this.DEFAULT_VOLUME;
   }
   

@@ -24,7 +24,11 @@ browser.runtime.onMessage.addListener((message, sender, sendResponse) => {
       break;
 
     case 'getVolume':
-      sendResponse({ volume: tabManager.getTabVolume(tabId) });
+      if (tabId) {
+        sendResponse({ volume: tabManager.getTabVolume(tabId) });
+      } else {
+        sendResponse({ error: 'No tab ID provided' });
+      }
       break;
 
     case 'getTabAudioStatus':

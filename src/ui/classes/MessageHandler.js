@@ -42,7 +42,7 @@ class MessageHandler {
    * @returns {Promise} Promise resolving to response
    */
   async getTabVolume(tabId) {
-    return browser.tabs.sendMessage(tabId, { action: 'getVolume' });
+    return browser.runtime.sendMessage({ action: 'getVolume', tabId });
   }
 
   /**

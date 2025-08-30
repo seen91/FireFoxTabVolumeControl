@@ -150,7 +150,7 @@ class TabListManager {
   }
 
   /**
-   * Sync tab volumes by querying content scripts directly
+   * Sync tab volumes by querying the background script
    */
   async syncTabVolumes() {
     const tabs = this.state.getAudioTabs();
@@ -160,10 +160,11 @@ class TabListManager {
         if (response && response.volume !== undefined) {
           // Use the state management system to update volume
           this.state.updateTabVolume(tab.id, response.volume);
+        } else if (response && response.error) {
+          console.warn(`Failed to get volume for tab ${tab.id}: ${response.error}`);
         }
       } catch (error) {
-        // Content script might not be ready or tab might not have audio anymore
-        // Keep the volume from background script
+        // Background script communication error
         console.warn(`Failed to sync volume for tab ${tab.id}:`, error);
       }
     });

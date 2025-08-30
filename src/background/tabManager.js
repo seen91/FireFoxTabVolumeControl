@@ -99,14 +99,11 @@ class TabManager {
    */
   async applyToAllTabs(volume) {
     const tabs = await browser.tabs.query({});
-    const promises = tabs
+    tabs
       .filter(tab => this.audioTabs.has(tab.id) || tab.audible)
-      .map(tab => {
+      .forEach(tab => {
         this.setTabVolume(tab.id, volume);
-        return browser.tabs.sendMessage(tab.id, { action: 'setVolume', volume }).catch(() => {});
       });
-    
-    await Promise.all(promises);
   }
   
   /**

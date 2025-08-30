@@ -32,7 +32,6 @@ class MessageHandler {
    * @returns {Promise} Promise resolving to response
    */
   async setTabVolume(tabId, volume) {
-    await browser.tabs.sendMessage(tabId, { action: 'setVolume', volume });
     return browser.runtime.sendMessage({ action: 'setVolume', tabId, volume });
   }
 

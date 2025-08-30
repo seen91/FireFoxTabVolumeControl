@@ -2,7 +2,7 @@
  * AudioManager - Handles Web Audio API operations for volume amplification
  */
 
-import { VOLUME_MAX } from './constants.js';
+import { VOLUME_MAX, DEFAULT_VOLUME } from './constants.js';
 
 class AudioManager {
   constructor() {
@@ -134,6 +134,10 @@ class AudioManager {
     if (element._audioSource) {
       // Element was previously connected, just add it back to our tracking
       this.connectedElements.add(element);
+      console.log('🔗 Tab Volume Control: Re-tracking existing Web Audio connection', {
+        element: element.tagName,
+        connectedCount: this.connectedElements.size
+      });
       return true;
     }
     
@@ -149,8 +153,13 @@ class AudioManager {
       source.connect(this.gainNode);
       this.connectedElements.add(element);
       
-      // Store reference to source for cleanup
+      // Store reference to source for tracking (but we'll never disconnect it!)
       element._audioSource = source;
+      console.log('🔗 Tab Volume Control: Connected element to Web Audio API', {
+        element: element.tagName,
+        connectedCount: this.connectedElements.size,
+        warning: 'This connection is permanent - audio is now routed through Web Audio API'
+      });
       return true;
     } catch (e) {
       // Connection failed - this element cannot use Web Audio API
@@ -174,11 +183,19 @@ class AudioManager {
    * @param {number} volume - Volume percentage (0-500)
    */
   setGainValue(volume) {
+    // For elements already connected to Web Audio API, we must always set the gain
+    // even at default volume (100%), because the audio is permanently routed through Web Audio API
     if (this.gainNode && !this.isSiteBlocked() && this.connectedElements.size > 0) {
       // For amplification, we want to amplify based on the extension volume setting
       // The gain represents how much to amplify beyond 100%
       // For example: 200% extension volume = 2x amplification
       this.gainNode.gain.value = volume / VOLUME_MAX;
+      
+      console.log('🎚️ Tab Volume Control: Set gain value for connected elements', {
+        volume: volume,
+        gainValue: volume / VOLUME_MAX,
+        connectedCount: this.connectedElements.size
+      });
     }
   }
 
@@ -193,24 +210,23 @@ class AudioManager {
   /**
    * Cleanup audio source for a specific element
    * @param {HTMLMediaElement} element - Element to cleanup
-   * @param {boolean} forceDisconnect - Force disconnect even if element is still in DOM
+   * @param {boolean} forceDisconnect - DEPRECATED: Force disconnect is dangerous and should not be used
    */
   cleanupAudioSource(element, forceDisconnect = false) {
-    // Only fully disconnect if the element is being removed from DOM or explicitly forced
-    // For temporary pauses/stops, keep the connection intact for reuse
-    if (forceDisconnect || !document.contains(element)) {
-      if (element._audioSource) {
-        try {
-          element._audioSource.disconnect();
-        } catch (e) {}
-        delete element._audioSource;
-      }
-      this.connectedElements.delete(element);
-    } else {
-      // Element is still in DOM, just remove from active tracking but keep the connection
-      // This allows for quick reconnection when audio resumes
-      this.connectedElements.delete(element);
-    }
+    // IMPORTANT: Never disconnect MediaElementAudioSourceNode!
+    // Once createMediaElementSource() is called, the audio is permanently routed 
+    // through Web Audio API. Disconnecting will permanently break audio playback.
+    // Instead, we only remove from tracking but keep the audio connection intact.
+    
+    // Just remove from our tracking - the audio connection stays intact
+    this.connectedElements.delete(element);
+    
+    // Note: We intentionally DO NOT call element._audioSource.disconnect()
+    // because that would permanently break audio for this element
+    console.log('🧹 Tab Volume Control: Cleaned up element tracking (keeping audio connection)', {
+      element: element.tagName,
+      connectedCount: this.connectedElements.size
+    });
   }
 
   /**
@@ -223,7 +239,9 @@ class AudioManager {
     // Clear blocked elements cache
     this.blockedElements = new WeakSet();
     
-    // Clean up existing audio context and connected elements
+    // IMPORTANT: Do NOT disconnect MediaElementAudioSourceNodes!
+    // Once connected, they must remain connected to preserve audio.
+    // Only close the AudioContext when navigating to completely clean up.
     if (this.audioContext) {
       try {
         this.audioContext.close();
@@ -232,8 +250,10 @@ class AudioManager {
       this.gainNode = null;
     }
     
-    // Clear connected elements
+    // Clear connected elements tracking (but don't disconnect the actual audio sources)
     this.connectedElements.clear();
+    
+    console.log('🔄 Tab Volume Control: Reset audio manager for navigation');
   }
 
   /**

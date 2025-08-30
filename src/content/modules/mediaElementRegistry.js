@@ -17,6 +17,7 @@ class MediaElementRegistry {
       this.mediaElements.add(element);
       
       // Apply current volume to the element
+      // The volumeController.applyVolumeToElement will handle the 100% volume optimization
       if (this.volumeController) {
         this.volumeController.applyVolumeToElement(element);
       }
@@ -32,6 +33,7 @@ class MediaElementRegistry {
    */
   setupElementEventListeners(element) {
     element.addEventListener('play', () => {
+      // The volumeController.applyVolumeToElement will handle the 100% volume optimization
       if (this.volumeController) {
         this.volumeController.applyVolumeToElement(element);
       }
@@ -54,11 +56,12 @@ class MediaElementRegistry {
   /**
    * Clean up a media element and remove it from tracking
    * @param {HTMLMediaElement} element - Element to cleanup
-   * @param {boolean} forceDisconnect - Force disconnect audio source
+   * @param {boolean} forceDisconnect - DEPRECATED: Force disconnect is dangerous and should not be used
    */
   cleanupMediaElement(element, forceDisconnect = false) {
     if (this.volumeController && this.volumeController.audioManager) {
-      this.volumeController.audioManager.cleanupAudioSource(element, forceDisconnect);
+      // Never force disconnect - it permanently breaks audio
+      this.volumeController.audioManager.cleanupAudioSource(element, false);
     }
     this.mediaElements.delete(element);
   }
@@ -98,18 +101,19 @@ class MediaElementRegistry {
         elementsToRemove.push(element);
       }
     });
-    // Force disconnect for elements that are actually removed from DOM
-    elementsToRemove.forEach(element => this.cleanupMediaElement(element, true));
+    // Don't force disconnect for elements removed from DOM - they're already gone
+    elementsToRemove.forEach(element => this.cleanupMediaElement(element, false));
   }
 
   /**
    * Reset registry state (for navigation)
    */
   reset() {
-    // Clean up all media elements with forced disconnect for navigation
+    // Clean up all media elements but never force disconnect
+    // MediaElementAudioSourceNodes should never be disconnected as it permanently breaks audio
     this.mediaElements.forEach(element => {
       if (this.volumeController && this.volumeController.audioManager) {
-        this.volumeController.audioManager.cleanupAudioSource(element, true);
+        this.volumeController.audioManager.cleanupAudioSource(element, false);
       }
     });
     this.mediaElements.clear();

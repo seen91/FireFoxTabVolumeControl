@@ -2,12 +2,12 @@
  * VolumeController - Handles volume application logic and coordination
  */
 
-import { VOLUME_MAX, VOLUME_AMPLIFICATION_THRESHOLD } from './constants.js';
+import { VOLUME_MAX, VOLUME_AMPLIFICATION_THRESHOLD, DEFAULT_VOLUME } from './constants.js';
 
 class VolumeController {
   constructor(audioManager) {
     this.audioManager = audioManager;
-    this.currentVolume = 100;
+    this.currentVolume = DEFAULT_VOLUME;
   }
 
   /**
@@ -16,6 +16,32 @@ class VolumeController {
    * @param {number} volume - Volume percentage (optional, uses current volume if not provided)
    */
   applyVolumeToElement(element, volume = this.currentVolume) {
+    // If volume is at the default level AND element has never been connected to Web Audio API,
+    // don't manipulate the audio at all - this ensures zero impact when no volume change is needed
+    if (volume === DEFAULT_VOLUME && !element._audioSource) {
+      console.log('🔇 Tab Volume Control: No volume manipulation needed (default volume, not connected)', {
+        element: element.tagName,
+        volume: volume
+      });
+      return;
+    }
+    
+    // If element is already connected to Web Audio API, we must continue using it
+    // even at default volume, since the audio is permanently routed through Web Audio API
+    if (element._audioSource && volume === DEFAULT_VOLUME) {
+      console.log('🔊 Tab Volume Control: Setting default volume via Web Audio API (already connected)', {
+        element: element.tagName,
+        volume: volume,
+        gainValue: volume / VOLUME_MAX
+      });
+      // We still need to set the gain to 1.0 (100%) for this already-connected element
+      // Don't try to connect again, just ensure gain is correct
+      if (this.audioManager.audioContext && this.audioManager.gainNode) {
+        this.audioManager.setGainValue(volume);
+      }
+      return;
+    }
+    
     // Try to use Web Audio API for full volume control (both reduction and amplification)
     // This preserves the native volume controls and applies our changes as amplification
     
@@ -82,6 +108,30 @@ class VolumeController {
   setVolume(volume, mediaRegistry) {
     this.currentVolume = volume;
     
+    // Check if we have any elements already connected to Web Audio API
+    const hasConnectedElements = this.audioManager.getConnectedElementsCount() > 0;
+    
+    // If volume is at the default level AND no elements are connected to Web Audio API,
+    // don't manipulate any audio - let the browser handle it natively
+    if (volume === DEFAULT_VOLUME && !hasConnectedElements) {
+      console.log('🔇 Tab Volume Control: No audio manipulation needed (default volume, no connections)');
+      
+      // Call site-specific handler if available (in case it needs to clean up)
+      if (typeof window.setSiteVolume === 'function') {
+        try { 
+          window.setSiteVolume(volume); 
+        } catch (e) {
+          // Silently handle errors from site-specific handlers
+        }
+      }
+      return;
+    }
+    
+    // If we have connected elements OR volume is not default, process all elements
+    if (hasConnectedElements && volume === DEFAULT_VOLUME) {
+      console.log('🔊 Tab Volume Control: Setting default volume for already-connected elements');
+    }
+    
     // Apply volume to all registered media elements
     if (mediaRegistry) {
       mediaRegistry.applyToAllElements((element) => {
@@ -133,7 +183,7 @@ class VolumeController {
    * Reset volume controller state (for navigation)
    * @param {number} defaultVolume - Default volume to reset to
    */
-  reset(defaultVolume = 100) {
+  reset(defaultVolume = DEFAULT_VOLUME) {
     this.currentVolume = defaultVolume;
   }
 }

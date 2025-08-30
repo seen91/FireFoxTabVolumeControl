@@ -21,7 +21,7 @@ class VolumeController {
     if (volume === DEFAULT_VOLUME && !element._audioSource) {
       console.log('🔇 Tab Volume Control: No volume manipulation needed (default volume, not connected)', {
         element: element.tagName,
-        volume: volume
+        volume
       });
       return;
     }
@@ -31,7 +31,7 @@ class VolumeController {
     if (element._audioSource && volume === DEFAULT_VOLUME) {
       console.log('🔊 Tab Volume Control: Setting default volume via Web Audio API (already connected)', {
         element: element.tagName,
-        volume: volume,
+        volume,
         gainValue: volume / VOLUME_MAX
       });
       // We still need to set the gain to 1.0 (100%) for this already-connected element

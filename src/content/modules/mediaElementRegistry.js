@@ -39,29 +39,19 @@ class MediaElementRegistry {
       }
     });
     
-    // Don't clean up on 'ended' or 'error' events for elements still in DOM
+    // Note: We don't clean up on 'ended' or 'error' events for elements still in DOM
     // Reddit and similar sites may trigger these events during normal operation
     // but the element remains in DOM and may play again
-    element.addEventListener('ended', () => {
-      // Only remove from active tracking, keep audio connection for potential reuse
-      // Don't force disconnect unless element is actually removed from DOM
-    });
-    
-    element.addEventListener('error', () => {
-      // Only remove from active tracking, keep audio connection for potential reuse
-      // Don't force disconnect unless element is actually removed from DOM
-    });
   }
 
   /**
    * Clean up a media element and remove it from tracking
    * @param {HTMLMediaElement} element - Element to cleanup
-   * @param {boolean} forceDisconnect - DEPRECATED: Force disconnect is dangerous and should not be used
    */
-  cleanupMediaElement(element, forceDisconnect = false) {
+  cleanupMediaElement(element) {
     if (this.volumeController && this.volumeController.audioManager) {
       // Never force disconnect - it permanently breaks audio
-      this.volumeController.audioManager.cleanupAudioSource(element, false);
+      this.volumeController.audioManager.cleanupAudioSource(element);
     }
     this.mediaElements.delete(element);
   }
@@ -102,7 +92,7 @@ class MediaElementRegistry {
       }
     });
     // Don't force disconnect for elements removed from DOM - they're already gone
-    elementsToRemove.forEach(element => this.cleanupMediaElement(element, false));
+    elementsToRemove.forEach(element => this.cleanupMediaElement(element));
   }
 
   /**
@@ -113,7 +103,7 @@ class MediaElementRegistry {
     // MediaElementAudioSourceNodes should never be disconnected as it permanently breaks audio
     this.mediaElements.forEach(element => {
       if (this.volumeController && this.volumeController.audioManager) {
-        this.volumeController.audioManager.cleanupAudioSource(element, false);
+        this.volumeController.audioManager.cleanupAudioSource(element);
       }
     });
     this.mediaElements.clear();

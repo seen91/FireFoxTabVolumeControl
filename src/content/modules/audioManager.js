@@ -2,7 +2,7 @@
  * AudioManager - Handles Web Audio API operations for volume amplification
  */
 
-import { VOLUME_MAX, DEFAULT_VOLUME } from './constants.js';
+import { VOLUME_MAX } from './constants.js';
 
 class AudioManager {
   constructor() {
@@ -192,7 +192,7 @@ class AudioManager {
       this.gainNode.gain.value = volume / VOLUME_MAX;
       
       console.log('🎚️ Tab Volume Control: Set gain value for connected elements', {
-        volume: volume,
+        volume,
         gainValue: volume / VOLUME_MAX,
         connectedCount: this.connectedElements.size
       });
@@ -210,9 +210,8 @@ class AudioManager {
   /**
    * Cleanup audio source for a specific element
    * @param {HTMLMediaElement} element - Element to cleanup
-   * @param {boolean} forceDisconnect - DEPRECATED: Force disconnect is dangerous and should not be used
    */
-  cleanupAudioSource(element, forceDisconnect = false) {
+  cleanupAudioSource(element) {
     // IMPORTANT: Never disconnect MediaElementAudioSourceNode!
     // Once createMediaElementSource() is called, the audio is permanently routed 
     // through Web Audio API. Disconnecting will permanently break audio playback.

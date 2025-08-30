@@ -167,12 +167,12 @@ class MediaScanner {
     if (node.nodeType === Node.ELEMENT_NODE) {
       if (node.tagName === 'AUDIO' || node.tagName === 'VIDEO') {
         // Don't force disconnect - it permanently breaks audio
-        this.mediaRegistry.cleanupMediaElement(node, false);
+        this.mediaRegistry.cleanupMediaElement(node);
       }
       if (node.querySelectorAll) {
         node.querySelectorAll('audio, video').forEach(element => {
           // Don't force disconnect - it permanently breaks audio
-          this.mediaRegistry.cleanupMediaElement(element, false);
+          this.mediaRegistry.cleanupMediaElement(element);
         });
       }
     }

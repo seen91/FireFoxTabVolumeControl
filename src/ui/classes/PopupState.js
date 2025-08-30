@@ -111,7 +111,7 @@ class PopupState {
     // Emit change event if tabs actually changed
     if (JSON.stringify(oldTabs) !== JSON.stringify(this.audioTabs)) {
       this._emit('tabsChanged', {
-        oldTabs: oldTabs,
+        oldTabs,
         newTabs: this.getAudioTabs()
       });
     }

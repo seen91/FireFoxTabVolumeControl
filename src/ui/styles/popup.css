@@ -186,12 +186,34 @@ body {
   color: var(--accent-primary);
 }
 
-/* Shown on tabs whose media stops at 100% (see AMPLIFICATION_LIMITS). */
+/* Warning on tabs whose media probably cannot be boosted (.tab-item-limited,
+   see AMPLIFICATION_LIMITS): the boosting presets turn orange with a warning
+   triangle and a note appears. The slider keeps its full range regardless. */
 .amplify-note {
+  display: none;
   margin-top: var(--spacing-xs);
   font-size: var(--font-xs);
-  color: var(--text-secondary);
+  color: var(--volume-low-text);
   cursor: help;
+}
+
+.tab-item-limited .amplify-note {
+  display: block;
+}
+
+.tab-item-limited .preset-btn[data-boost] {
+  border-color: var(--volume-low-text);
+  background: var(--volume-low-bg);
+  color: var(--volume-low-text);
+}
+
+.tab-item-limited .preset-btn[data-boost]::before {
+  content: '\26A0 ';
+}
+
+.tab-item-limited .preset-btn[data-boost]:hover {
+  background: var(--volume-low-text);
+  color: white;
 }
 
 /* Action Buttons */

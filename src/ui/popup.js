@@ -5,7 +5,7 @@
  * to the background script (which owns all volume state).
  */
 
-import { CONFIG, AMPLIFICATION_LIMITS, formatPresetLabel } from './config.js';
+import { CONFIG, AMPLIFICATION_LIMITS, AMPLIFICATION_OVERRIDE_HINT, formatPresetLabel } from './config.js';
 import themeManager from './themeManager.js';
 
 const send = (action, extra = {}) => browser.runtime.sendMessage({ action, ...extra });
@@ -48,23 +48,6 @@ function setVolumeDisplay(display, volume, baseClass) {
 
 function findTab(tabId) {
   return tabs.find(tab => tab.id === tabId);
-}
-
-/**
- * Upper bound of a tab's slider: tabs whose media cannot be routed through
- * Web Audio stop at 100%.
- */
-function maxVolumeFor(tab) {
-  return tab.canAmplify === false ? CONFIG.VOLUMES.MAX_NATIVE : CONFIG.VOLUMES.MAX;
-}
-
-/**
- * The volume the tab actually plays at. A stored value above the tab's
- * ceiling (e.g. a remembered 500% on a site that cannot be amplified) has
- * no effect, so the badge shows the ceiling rather than the stored number.
- */
-function effectiveVolume(tab) {
-  return Math.min(tab.volume, maxVolumeFor(tab));
 }
 
 function showNoAudioMessage() {
@@ -134,6 +117,7 @@ function createTabElement(tab) {
         <span class="volume-label"></span>
       </div>
       <div class="preset-buttons"></div>
+      <div class="amplify-note">Boosting may not work</div>
     </div>
   `;
 
@@ -144,18 +128,15 @@ function createTabElement(tab) {
   title.title = tab.title;
 
   const display = tabDiv.querySelector('.tab-volume-display');
-  setVolumeDisplay(display, effectiveVolume(tab), 'tab-volume-display');
-
-  const maxVolume = maxVolumeFor(tab);
-  const limitText = AMPLIFICATION_LIMITS[tab.amplificationLimit] || AMPLIFICATION_LIMITS['rejected'];
+  setVolumeDisplay(display, tab.volume, 'tab-volume-display');
 
   const [minLabel, maxLabel] = tabDiv.querySelectorAll('.volume-label');
   minLabel.textContent = `${CONFIG.VOLUMES.MIN}%`;
-  maxLabel.textContent = `${maxVolume}%`;
+  maxLabel.textContent = `${CONFIG.VOLUMES.MAX}%`;
 
   const slider = tabDiv.querySelector('.volume-slider');
   slider.min = CONFIG.VOLUMES.MIN;
-  slider.max = maxVolume;
+  slider.max = CONFIG.VOLUMES.MAX;
   slider.value = tab.volume;
   slider.dataset.tabId = tab.id;
   slider.addEventListener('input', () => {
@@ -167,10 +148,8 @@ function createTabElement(tab) {
     const btn = document.createElement('button');
     btn.className = 'preset-btn';
     btn.textContent = formatPresetLabel(preset);
-    if (preset > maxVolume) {
-      btn.disabled = true;
-      btn.title = limitText;
-    }
+    // Marks the presets that boost; styled as a warning on limited tabs.
+    if (preset > CONFIG.VOLUMES.DEFAULT) btn.dataset.boost = '';
     btn.addEventListener('click', () => {
       slider.value = preset;
       setTabVolume(tab.id, preset, slider, display);
@@ -178,13 +157,7 @@ function createTabElement(tab) {
     presetContainer.appendChild(btn);
   }
 
-  if (tab.canAmplify === false) {
-    const note = document.createElement('div');
-    note.className = 'amplify-note';
-    note.textContent = 'Amplification not available on this site';
-    note.title = limitText;
-    tabDiv.querySelector('.volume-container').appendChild(note);
-  }
+  applyAmplificationWarning(tabDiv, tab);
 
   if (tab.hostname) {
     const label = document.createElement('label');
@@ -209,8 +182,28 @@ function createTabElement(tab) {
 }
 
 /**
- * Update slider positions and volume displays of the existing list in place,
- * so mid-interaction state (slider drag, checkbox focus) isn't destroyed.
+ * Flag a row whose media the content script could not route for boosting.
+ * The detection is a best guess, so it only warns - the boosting presets turn
+ * orange and a note appears, both explaining why on hover - while the full
+ * range stays usable as an override. Values above 100% simply have no effect
+ * if the guess was right. Toggled in place so an open row never re-renders
+ * under the user's cursor when the verdict arrives mid-drag.
+ */
+function applyAmplificationWarning(tabDiv, tab) {
+  const limited = tab.canAmplify === false;
+  tabDiv.classList.toggle('tab-item-limited', limited);
+
+  const limitText = AMPLIFICATION_LIMITS[tab.amplificationLimit] || AMPLIFICATION_LIMITS['rejected'];
+  const title = limited ? `${limitText} ${AMPLIFICATION_OVERRIDE_HINT}` : '';
+  tabDiv.querySelectorAll('.amplify-note, .preset-btn[data-boost]').forEach(node => {
+    node.title = title;
+  });
+}
+
+/**
+ * Update slider positions, volume displays and warnings of the existing list
+ * in place, so mid-interaction state (slider drag, checkbox focus) isn't
+ * destroyed.
  */
 function updateTabListInPlace() {
   el.tabList.querySelectorAll('.volume-slider').forEach(slider => {
@@ -218,8 +211,9 @@ function updateTabListInPlace() {
     if (!tab) return;
 
     slider.value = tab.volume;
-    const display = slider.closest('.tab-item').querySelector('.tab-volume-display');
-    setVolumeDisplay(display, effectiveVolume(tab), 'tab-volume-display');
+    const tabDiv = slider.closest('.tab-item');
+    setVolumeDisplay(tabDiv.querySelector('.tab-volume-display'), tab.volume, 'tab-volume-display');
+    applyAmplificationWarning(tabDiv, tab);
   });
 }
 
@@ -253,8 +247,7 @@ async function loadAudioTabs({ silent = false } = {}) {
         response.tabs.every((t, i) =>
           t.id === tabs[i].id &&
           t.title === tabs[i].title &&
-          t.remembered === tabs[i].remembered &&
-          t.canAmplify === tabs[i].canAmplify
+          t.remembered === tabs[i].remembered
         );
       tabs = response.tabs;
 

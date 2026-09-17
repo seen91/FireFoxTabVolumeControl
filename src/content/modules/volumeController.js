@@ -9,6 +9,7 @@ class VolumeController {
     this.audioManager = audioManager;
     this.currentVolume = DEFAULT_VOLUME;
     this.html5Adjusted = new WeakSet(); // elements whose native volume we changed
+    this.fallbackReasons = new WeakMap(); // html5Adjusted element -> why it is not routed
     // What the page last set an element's volume to (fed by pageHooks.js).
     // On the HTML5 fallback path the element's real volume is this value
     // times our factor, while the page keeps reading back its own value -
@@ -42,6 +43,16 @@ class VolumeController {
       : number;
   }
 
+  /**
+   * Why the element is currently on the HTML5 fallback path instead of our
+   * gain node, or null when it is routed, untouched (default volume) or not
+   * yet decided. Unlike AudioManager.amplificationBlockReason this reflects
+   * what we actually did, so the popup's warning follows reality.
+   */
+  fallbackReason(element) {
+    return this.fallbackReasons.get(element) ?? null;
+  }
+
   applyVolumeToElement(element, volume = this.currentVolume) {
     if (volume === DEFAULT_VOLUME) {
       if (this.audioManager.hasSource(element)) {
@@ -56,13 +67,14 @@ class VolumeController {
     // An element already routed through our GainNode stays on the gain
     // path for good, whatever its current state - routing is permanent.
     if (!this.audioManager.hasSource(element)) {
-      if (this.audioManager.shouldBlockAmplification(element)) {
-        this._applyHtml5Fallback(element, volume);
+      const blockReason = this.audioManager.amplificationBlockReason(element);
+      if (blockReason) {
+        this._applyHtml5Fallback(element, volume, blockReason);
         return;
       }
 
       if (!this.audioManager.audioContext && !this.audioManager.initAudioContext()) {
-        this._applyHtml5Fallback(element, volume);
+        this._applyHtml5Fallback(element, volume, 'rejected');
         return;
       }
     }
@@ -78,7 +90,10 @@ class VolumeController {
       // starts at 1.0 regardless of the tab's chosen volume.
       this.audioManager.setGainValue(volume);
     } else {
-      this._applyHtml5Fallback(element, volume);
+      // The attempt just failed; the manager now knows why.
+      this._applyHtml5Fallback(
+        element, volume, this.audioManager.amplificationBlockReason(element) || 'rejected'
+      );
     }
   }
 
@@ -87,10 +102,11 @@ class VolumeController {
     return Math.min(volume, VOLUME_SCALE) / VOLUME_SCALE;
   }
 
-  _applyHtml5Fallback(element, volume) {
+  _applyHtml5Fallback(element, volume, reason) {
     const pageVolume = this.getPageVolume(element);
     this.pageVolumes.set(element, pageVolume);
     this.html5Adjusted.add(element);
+    this.fallbackReasons.set(element, reason);
     element.volume = pageVolume * this._html5Factor(volume);
   }
 
@@ -99,6 +115,7 @@ class VolumeController {
    */
   _restoreHtml5(element) {
     this.html5Adjusted.delete(element);
+    this.fallbackReasons.delete(element);
     element.volume = this.getPageVolume(element);
   }
 

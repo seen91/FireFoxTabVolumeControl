@@ -6,8 +6,7 @@
 class MediaElementRegistry {
   constructor(volumeController, audioManager) {
     this.mediaElements = new Set();
-    this.playListenerAttached = new WeakSet();
-    this.everPlayed = new WeakSet(); // elements that fired 'play' at least once
+    this.listenersAttached = new WeakSet();
     this.volumeController = volumeController;
     this.audioManager = audioManager;
     // Called whenever the answer to getAmplificationStatus() may have
@@ -16,21 +15,29 @@ class MediaElementRegistry {
   }
 
   /**
-   * Whether any tracked element that has actually played is stuck on the
-   * HTML5 volume path, and why. Elements that never played (preloaded
-   * videos, ads waiting in the wings) don't count, and null is returned
-   * while nothing qualifies, so a momentary gap between players does not
-   * flip the popup back and forth.
+   * Whether the media playing right now can be boosted, judged by what we
+   * actually did with it rather than by guessing from element properties:
+   * an element routed through our gain node is amplified; an element we had
+   * to put on the HTML5 fallback path is not, and the recorded reason says
+   * why. Only playing, unmuted elements count - preloaded videos, idle ads,
+   * a player the page paused and left behind, and muted helper elements
+   * (SPAs like Netflix keep a few around) must not speak for the tab. If
+   * anything audible is routed the tab is fine even when a side element is
+   * not.
+   *
+   * Null means "no news": nothing plays, or what plays is untouched (default
+   * volume, no decision made yet). The background then keeps the previous
+   * verdict, so a warning does not flicker as the slider crosses 100% and
+   * only a routed element - proof that boosting works - withdraws it.
    */
   getAmplificationStatus() {
-    let counted = 0;
+    let limitedReason = null;
     for (const element of this.mediaElements) {
-      if (!this.everPlayed.has(element)) continue;
-      counted++;
-      const reason = this.audioManager.amplificationBlockReason(element);
-      if (reason) return { limited: true, reason };
+      if (element.paused || element.muted) continue;
+      if (this.audioManager.hasSource(element)) return { limited: false, reason: null };
+      limitedReason ??= this.volumeController.fallbackReason(element);
     }
-    return counted > 0 ? { limited: false, reason: null } : null;
+    return limitedReason ? { limited: true, reason: limitedReason } : null;
   }
 
   announceStatus() {
@@ -38,7 +45,15 @@ class MediaElementRegistry {
   }
 
   registerMediaElement(element) {
-    if (!(element instanceof HTMLMediaElement) || this.mediaElements.has(element)) {
+    if (!(element instanceof HTMLMediaElement)) return;
+
+    if (this.mediaElements.has(element)) {
+      // Seen again, e.g. the observer or a scan found an element that was
+      // first registered detached through the play() hook and has since
+      // been inserted into the DOM. That can change whether it is routable,
+      // so revisit a playing element's path and the frame's status.
+      if (!element.paused) this.volumeController.applyVolumeToElement(element);
+      this.announceStatus();
       return;
     }
 
@@ -47,23 +62,23 @@ class MediaElementRegistry {
       // Only reachable through the page-level play() hook; worth a trace.
       console.debug('Tab Volume Control: registered detached media element', element);
     }
-    if (!element.paused) this.everPlayed.add(element); // found mid-playback
     this.volumeController.applyVolumeToElement(element);
     this.announceStatus();
 
-    // Re-apply on play: elements skipped while paused pick up the volume
-    // here. Attached once per element ever - an element can be untracked
-    // and re-registered (SPAs re-parent players), and listeners would
-    // otherwise accumulate. No cleanup on 'ended'/'error' - sites like
-    // Reddit fire these during normal operation and the element may play
-    // again.
-    if (!this.playListenerAttached.has(element)) {
-      this.playListenerAttached.add(element);
+    // Attached once per element ever - an element can be untracked and
+    // re-registered (SPAs re-parent players), and listeners would otherwise
+    // accumulate. No cleanup on 'ended'/'error' - sites like Reddit fire
+    // these during normal operation and the element may play again.
+    if (!this.listenersAttached.has(element)) {
+      this.listenersAttached.add(element);
+      // Re-apply on play: elements skipped while paused pick up the volume
+      // here, and the status is derived from playing elements.
       element.addEventListener('play', () => {
-        this.everPlayed.add(element);
         this.volumeController.applyVolumeToElement(element);
         this.announceStatus();
       });
+      // Muting or unmuting changes which elements the status counts.
+      element.addEventListener('volumechange', () => this.announceStatus());
     }
   }
 

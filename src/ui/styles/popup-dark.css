@@ -60,6 +60,17 @@ body.dark-theme .preset-btn:disabled:hover {
   color: var(--accent-primary);
 }
 
+body.dark-theme .tab-item-limited .preset-btn[data-boost] {
+  border-color: var(--volume-low-text);
+  background: var(--volume-low-bg);
+  color: var(--volume-low-text);
+}
+
+body.dark-theme .tab-item-limited .preset-btn[data-boost]:hover {
+  background: var(--volume-low-text);
+  color: var(--bg-primary);
+}
+
 body.dark-theme .apply-all-btn {
   background: var(--accent-primary);
   color: var(--bg-primary);

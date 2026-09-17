@@ -59,7 +59,7 @@ The add-on uses the Web Audio API to modify audio output:
 
 3. **Media Detection**: A MutationObserver and periodic scans (including open shadow DOM, used by players like Reddit's) find media elements as they appear, so dynamically loaded players are picked up automatically. The page's own `play()` is also hooked, which catches players that never attach their audio element to the DOM (SoundCloud, for example).
 
-4. **Limitations**: Media that cannot be routed through the Web Audio API falls back to the native volume property, so it can be turned down (0-100%) but not amplified. This applies to cross-origin media without CORS headers (9gag, for example) and to sites that process their audio through the Web Audio API themselves (SoundCloud). The popup detects this and caps the affected tab's slider at 100%, with a note explaining why.
+4. **Limitations**: Media that cannot be routed through the Web Audio API falls back to the native volume property, so it can be turned down (0-100%) but not amplified. This applies to cross-origin media without CORS headers (9gag, for example) and to sites that process their audio through the Web Audio API themselves (SoundCloud); DRM-protected streams such as Netflix are fine. When the media currently playing in a tab is on this fallback path, the popup shows a warning on that tab with the reason on hover. The full 0-500% range stays available so you can try anyway; if the detection was right, values above 100% simply sound like 100%.
 
 ## License
 

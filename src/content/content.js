@@ -21,28 +21,47 @@ const mediaScanner = new MediaScanner(mediaRegistry);
 installPageHooks(mediaRegistry, audioManager, volumeController);
 
 // Tell the background whether this frame's media can be amplified, so the
-// popup can cap the slider at 100% and say why. Sent only when the answer
-// changes. The top frame announces a clean slate on load so stale entries
-// from the previous document (including its iframes) are dropped.
+// popup can warn that boosting may have no effect and say why. Sent only
+// when the answer changes. The top frame announces a clean slate on load so
+// stale entries from the previous document (including its iframes) are
+// dropped; every frame also withdraws a "limited" verdict when it goes
+// away, since a removed iframe or a page that navigates somewhere we do not
+// run (about:, PDF viewer) has no successor to do it.
+const UNLIMITED_KEY = 'false:null';
 let lastAmplificationKey = null;
+
+function sendAmplificationStatus(status, extra = {}) {
+  lastAmplificationKey = `${status.limited}:${status.reason}`;
+  browser.runtime.sendMessage({ action: 'amplificationStatus', ...status, ...extra }).catch(() => {});
+}
 
 function publishAmplificationStatus() {
   const status = mediaRegistry.getAmplificationStatus();
   if (!status) return;
-  const key = `${status.limited}:${status.reason}`;
-  if (key === lastAmplificationKey) return;
-  lastAmplificationKey = key;
-  browser.runtime.sendMessage({ action: 'amplificationStatus', ...status }).catch(() => {});
+  if (`${status.limited}:${status.reason}` === lastAmplificationKey) return;
+  sendAmplificationStatus(status);
 }
 
 mediaRegistry.onStatusChange = publishAmplificationStatus;
 
 if (window.top === window) {
-  lastAmplificationKey = 'false:null';
-  browser.runtime.sendMessage({
-    action: 'amplificationStatus', initial: true, limited: false, reason: null
-  }).catch(() => {});
+  sendAmplificationStatus({ limited: false, reason: null }, { initial: true });
 }
+
+window.addEventListener('pagehide', () => {
+  if (lastAmplificationKey !== null && lastAmplificationKey !== UNLIMITED_KEY) {
+    sendAmplificationStatus({ limited: false, reason: null });
+  }
+});
+
+// Back from the back-forward cache: the page resumes with the state we
+// withdrew on pagehide, so let the next status change go through.
+window.addEventListener('pageshow', (event) => {
+  if (event.persisted) {
+    lastAmplificationKey = null;
+    publishAmplificationStatus();
+  }
+});
 
 browser.runtime.onMessage.addListener((message, sender, sendResponse) => {
   switch (message.action) {

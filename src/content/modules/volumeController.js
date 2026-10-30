@@ -73,6 +73,17 @@ class VolumeController {
         return;
       }
 
+      // Route only media that is actually playing. Firefox rejects
+      // setMediaKeys() on an element Web Audio has captured, and players
+      // like Amazon Prime Video insert their <video> before attaching DRM
+      // keys; encrypted media cannot get this far without its keys. Until
+      // then the HTML5 path carries the volume, and the registry's
+      // 'playing' listener brings the element back here.
+      if (!this._isPlaying(element)) {
+        this._applyHtml5Fallback(element, volume, null);
+        return;
+      }
+
       if (!this.audioManager.audioContext && !this.audioManager.initAudioContext()) {
         this._applyHtml5Fallback(element, volume, 'rejected');
         return;
@@ -97,16 +108,28 @@ class VolumeController {
     }
   }
 
+  _isPlaying(element) {
+    return !element.paused && element.readyState >= HTMLMediaElement.HAVE_FUTURE_DATA;
+  }
+
   // HTML5 volume maxes out at 1.0, so amplification is clamped away here.
   _html5Factor(volume) {
     return Math.min(volume, VOLUME_SCALE) / VOLUME_SCALE;
   }
 
+  /**
+   * A null reason means the element is only waiting to be routed (not yet
+   * playing), which is no cause for a warning.
+   */
   _applyHtml5Fallback(element, volume, reason) {
     const pageVolume = this.getPageVolume(element);
     this.pageVolumes.set(element, pageVolume);
     this.html5Adjusted.add(element);
-    this.fallbackReasons.set(element, reason);
+    if (reason) {
+      this.fallbackReasons.set(element, reason);
+    } else {
+      this.fallbackReasons.delete(element);
+    }
     element.volume = pageVolume * this._html5Factor(volume);
   }
 

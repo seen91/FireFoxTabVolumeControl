@@ -78,7 +78,9 @@ class AudioManager {
    *
    * DRM is deliberately not a reason: Firefox lets Web Audio capture the
    * audio of EME-protected media (Netflix amplifies fine), it only blocks
-   * captureStream() of the video.
+   * captureStream() of the video. The catch is ordering: setMediaKeys()
+   * fails on an element that is already captured, so the VolumeController
+   * routes an element only once it is playing.
    *
    * Everything but 'rejected' and 'page-audio' is derived from the element's
    * current state, so the answer can change as the page attaches or

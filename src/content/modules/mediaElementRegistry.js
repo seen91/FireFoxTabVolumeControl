@@ -77,6 +77,12 @@ class MediaElementRegistry {
         this.volumeController.applyVolumeToElement(element);
         this.announceStatus();
       });
+      // Media is routed through Web Audio only once it is actually playing
+      // (see VolumeController), which 'play' alone does not guarantee.
+      element.addEventListener('playing', () => {
+        this.volumeController.applyVolumeToElement(element);
+        this.announceStatus();
+      });
       // Muting or unmuting changes which elements the status counts.
       element.addEventListener('volumechange', () => this.announceStatus());
     }

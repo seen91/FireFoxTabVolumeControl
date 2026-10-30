@@ -54,57 +54,61 @@ class VolumeController {
   }
 
   applyVolumeToElement(element, volume = this.currentVolume) {
-    if (volume === DEFAULT_VOLUME) {
-      if (this.audioManager.hasSource(element)) {
-        this.audioManager.setGainValue(volume);
-      } else if (this.html5Adjusted.has(element)) {
-        this._restoreHtml5(element);
-      }
-      // Untouched element at default volume: leave the browser alone.
+    // Routed elements (ours) and page-managed ones (the page's own graph)
+    // reach the speakers through an output gain that AudioManager.setVolume
+    // keeps current, so there is nothing to do per element. Routing is
+    // permanent, whatever the element's state later.
+    if (this.audioManager.hasSource(element)) return;
+    if (this.audioManager.isPageManaged(element)) {
+      this.handOverToPage(element);
       return;
     }
 
-    // An element already routed through our GainNode stays on the gain
-    // path for good, whatever its current state - routing is permanent.
-    if (!this.audioManager.hasSource(element)) {
-      const blockReason = this.audioManager.amplificationBlockReason(element);
-      if (blockReason) {
-        this._applyHtml5Fallback(element, volume, blockReason);
-        return;
-      }
-
-      // Route only media that is actually playing. Firefox rejects
-      // setMediaKeys() on an element Web Audio has captured, and players
-      // like Amazon Prime Video insert their <video> before attaching DRM
-      // keys; encrypted media cannot get this far without its keys. Until
-      // then the HTML5 path carries the volume, and the registry's
-      // 'playing' listener brings the element back here.
-      if (!this._isPlaying(element)) {
-        this._applyHtml5Fallback(element, volume, null);
-        return;
-      }
-
-      if (!this.audioManager.audioContext && !this.audioManager.initAudioContext()) {
-        this._applyHtml5Fallback(element, volume, 'rejected');
-        return;
-      }
+    if (volume === DEFAULT_VOLUME) {
+      // Untouched element at default volume: leave the browser alone.
+      if (this.html5Adjusted.has(element)) this._restoreHtml5(element);
+      return;
     }
 
-    if (this.audioManager.tryConnectToAudioContext(element)) {
+    const blockReason = this.audioManager.amplificationBlockReason(element);
+    if (blockReason) {
+      this._applyHtml5Fallback(element, volume, blockReason);
+      return;
+    }
+
+    // Route only media that is actually playing. Firefox rejects
+    // setMediaKeys() on an element Web Audio has captured, and players
+    // like Amazon Prime Video insert their <video> before attaching DRM
+    // keys; encrypted media cannot get this far without its keys. Until
+    // then the HTML5 path carries the volume, and the registry's
+    // 'playing' listener brings the element back here.
+    if (!this._isPlaying(element)) {
+      this._applyHtml5Fallback(element, volume, null);
+      return;
+    }
+
+    if (this.audioManager.routeElement(element)) {
       // The element may have used the HTML5 fallback earlier (e.g. it was
       // created detached and attached later). Its native volume would now
       // stack on top of the gain, so restore it.
-      if (this.html5Adjusted.has(element)) {
-        this._restoreHtml5(element);
-      }
-      // A late joiner must pick up the current gain - a fresh GainNode
-      // starts at 1.0 regardless of the tab's chosen volume.
-      this.audioManager.setGainValue(volume);
+      if (this.html5Adjusted.has(element)) this._restoreHtml5(element);
     } else {
       // The attempt just failed; the manager now knows why.
       this._applyHtml5Fallback(
         element, volume, this.audioManager.amplificationBlockReason(element) || 'rejected'
       );
+    }
+  }
+
+  /**
+   * The page routes the element through its own Web Audio graph, which ends
+   * in our output gain (see AudioManager.outputFor). Firefox still
+   * applies the element's native volume, so any HTML5 adjustment would now
+   * stack on the gain - give the page its own volume back.
+   */
+  handOverToPage(element) {
+    if (this.html5Adjusted.has(element)) {
+      this._restoreHtml5(element);
     }
   }
 
@@ -147,12 +151,12 @@ class VolumeController {
    */
   setVolume(volume, mediaRegistry) {
     this.currentVolume = volume;
+    this.audioManager.setVolume(volume);
 
     mediaRegistry.applyToAllElements((element) => {
       this.applyVolumeToElement(element, volume);
     });
 
-    this.audioManager.setGainValue(volume);
     // Routing attempts above may have revealed elements Web Audio rejects.
     mediaRegistry.announceStatus();
   }

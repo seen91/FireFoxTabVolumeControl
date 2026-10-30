@@ -1,28 +1,47 @@
 /**
- * AudioManager - Routes media elements through Web Audio for amplification.
+ * AudioManager - Owns the output gains that apply the tab volume to Web
+ * Audio, and routes media elements through them for amplification.
+ *
+ * Every AudioContext in the frame, ours or the page's, reaches the speakers
+ * through one GainNode we put in front of its destination. Our own context
+ * carries the media elements we route ourselves; page contexts (Foundry
+ * VTT, games, SoundCloud) are rerouted by the connect() hook in
+ * pageHooks.js. Either way the volume lives in one place: setVolume().
  */
 
 class AudioManager {
   constructor() {
-    this.audioContext = null;
-    this.gainNode = null;
-    this.routedElements = new WeakSet();  // ever routed through createMediaElementSource
-    this.connectedElements = new Set();
+    this.audioContext = null;             // ours, created on first routed element
+    this.outputs = new Map();             // AudioContext -> our GainNode in front of its destination
+    this.volume = DEFAULT_VOLUME;
+    this.routedElements = new WeakSet();  // routed through our createMediaElementSource
     this.blockedElements = new WeakSet(); // elements Web Audio rejected
     this.pageManagedElements = new WeakSet(); // elements the page routes through its own Web Audio
   }
 
-  initAudioContext() {
-    if (this.audioContext) return true;
+  /**
+   * The GainNode in front of the context's destination, created on first
+   * use. Our calls go through Xray wrappers, so they bypass the page's
+   * hooked connect().
+   */
+  outputFor(context) {
+    let gain = this.outputs.get(context);
+    if (!gain) {
+      gain = context.createGain();
+      gain.gain.value = this.volume / VOLUME_SCALE;
+      gain.connect(context.destination);
+      this.outputs.set(context, gain);
+      context.addEventListener('statechange', () => {
+        if (context.state === 'closed') this.outputs.delete(context);
+      });
+    }
+    return gain;
+  }
 
-    try {
-      this.audioContext = new (window.AudioContext || window.webkitAudioContext)();
-      this.gainNode = this.audioContext.createGain();
-      this.gainNode.connect(this.audioContext.destination);
-      return true;
-    } catch (error) {
-      console.warn('Tab Volume Control: AudioContext unavailable', error);
-      return false;
+  setVolume(volume) {
+    this.volume = volume;
+    for (const gain of this.outputs.values()) {
+      gain.gain.value = volume / VOLUME_SCALE;
     }
   }
 
@@ -56,24 +75,28 @@ class AudioManager {
   }
 
   /**
-   * The page called createMediaElementSource() on this element. An element
-   * feeds at most one source node, so it is the page's now - see pageHooks.js.
+   * The page routes this element through its own Web Audio graph (see
+   * pageHooks.js). An element feeds at most one source node, so we must
+   * never take it; the page's graph ends in an output gain anyway.
    */
   markPageManaged(element) {
     this.pageManagedElements.add(element);
   }
 
+  isPageManaged(element) {
+    return this.pageManagedElements.has(element);
+  }
+
   /**
    * Why this element must stay on the native HTML5 volume path (0-100%, no
-   * amplification), or null when it can be - or already is - routed through
-   * Web Audio. The reason codes are shown to the user by the popup.
+   * amplification), or null when it can be routed through Web Audio. The
+   * reason codes are shown to the user by the popup.
    *
-   *   'page-audio'   The page routes it through its own Web Audio graph; an
-   *                  element feeds at most one source node and taking it
-   *                  first would break the site's player (SoundCloud).
    *   'rejected'     Web Audio refused the element when we tried.
-   *   'detached'     Never inserted into the DOM. Such sites typically own
-   *                  the element's Web Audio graph, so it is not routed.
+   *   'detached'     Never inserted into the DOM. Such sites typically
+   *                  route the element through their own Web Audio graph
+   *                  later (SoundCloud does, lazily), and taking it first
+   *                  would make their call throw.
    *   'cross-origin' Served from another origin without CORS.
    *
    * DRM is deliberately not a reason: Firefox lets Web Audio capture the
@@ -82,72 +105,43 @@ class AudioManager {
    * fails on an element that is already captured, so the VolumeController
    * routes an element only once it is playing.
    *
-   * Everything but 'rejected' and 'page-audio' is derived from the element's
-   * current state, so the answer can change as the page attaches or
-   * re-sources it. The VolumeController asks each time it applies a volume.
+   * Everything but 'rejected' is derived from the element's current state,
+   * so the answer can change as the page attaches or re-sources it. The
+   * VolumeController asks each time it applies a volume.
    */
   amplificationBlockReason(element) {
-    if (this.routedElements.has(element)) return null;
-    if (this.pageManagedElements.has(element)) return 'page-audio';
     if (this.blockedElements.has(element)) return 'rejected';
     if (!element.isConnected) return 'detached';
     if (this.isCrossOriginElement(element)) return 'cross-origin';
     return null;
   }
 
-  shouldBlockAmplification(element) {
-    return this.amplificationBlockReason(element) !== null;
-  }
-
   /**
-   * Whether the element was ever routed through Web Audio.
+   * Whether the element is routed through our own context.
    */
   hasSource(element) {
     return this.routedElements.has(element);
   }
 
   /**
-   * Try to route element through Web Audio. Once routed, never disconnect:
-   * disconnecting a MediaElementAudioSourceNode permanently kills audio for
-   * that element.
+   * Route the element through our own context's output gain; returns
+   * whether it is routed. Once routed, never disconnect: disconnecting a
+   * MediaElementAudioSourceNode permanently kills audio for that element.
    */
-  tryConnectToAudioContext(element) {
-    if (!this.audioContext || !this.gainNode) return false;
-    if (this.connectedElements.has(element)) return true;
-
-    if (this.routedElements.has(element)) {
-      // Already routed previously, re-track without reconnecting.
-      this.connectedElements.add(element);
-      return true;
-    }
-
-    if (this.shouldBlockAmplification(element)) {
-      return false;
-    }
+  routeElement(element) {
+    if (this.routedElements.has(element)) return true;
+    if (this.pageManagedElements.has(element)) return false;
+    if (this.amplificationBlockReason(element)) return false;
 
     try {
+      this.audioContext ??= new AudioContext();
       const source = this.audioContext.createMediaElementSource(element);
-      source.connect(this.gainNode);
+      source.connect(this.outputFor(this.audioContext));
       this.routedElements.add(element);
-      this.connectedElements.add(element);
       return true;
     } catch {
       this.blockedElements.add(element);
       return false;
     }
-  }
-
-  setGainValue(volume) {
-    if (this.gainNode && this.connectedElements.size > 0) {
-      this.gainNode.gain.value = volume / VOLUME_SCALE;
-    }
-  }
-
-  /**
-   * Stop tracking an element without disconnecting its source node.
-   * The audio routing remains intact - disconnecting would kill playback.
-   */
-  cleanupAudioSource(element) {
-    this.connectedElements.delete(element);
   }
 }

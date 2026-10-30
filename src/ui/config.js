@@ -19,7 +19,6 @@ export const CONFIG = {
  * anyway in case the detection is wrong.
  */
 export const AMPLIFICATION_LIMITS = {
-  'page-audio': 'This site processes its audio through the Web Audio API itself. Firefox lets only one party do that per media element, so the extension can lower the volume but not boost it.',
   'detached': "This site's player keeps its audio element outside the page, where the extension cannot route it for amplification.",
   'cross-origin': 'The media is served from another domain without CORS headers, so Firefox does not allow the extension to process its audio.',
   'rejected': 'Firefox refused to route this media through the Web Audio API.'

@@ -34,7 +34,9 @@ class MediaElementRegistry {
     let limitedReason = null;
     for (const element of this.mediaElements) {
       if (element.paused || element.muted) continue;
-      if (this.audioManager.hasSource(element)) return { limited: false, reason: null };
+      if (this.audioManager.hasSource(element) || this.audioManager.isPageManaged(element)) {
+        return { limited: false, reason: null };
+      }
       limitedReason ??= this.volumeController.fallbackReason(element);
     }
     return limitedReason ? { limited: true, reason: limitedReason } : null;
@@ -93,11 +95,10 @@ class MediaElementRegistry {
   }
 
   /**
-   * Stop tracking an element. Never disconnects its Web Audio source node -
-   * that would permanently break the element's audio.
+   * Stop tracking an element. Its Web Audio routing, if any, stays intact -
+   * disconnecting would permanently break the element's audio.
    */
   cleanupMediaElement(element) {
-    this.audioManager.cleanupAudioSource(element);
     if (this.mediaElements.delete(element)) this.announceStatus();
   }
 

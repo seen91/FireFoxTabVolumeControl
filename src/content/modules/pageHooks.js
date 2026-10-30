@@ -1,7 +1,8 @@
 /**
  * PageHooks - Wraps a few of the PAGE's own prototypes so media the DOM
- * never shows us still gets registered, and so the page cannot undo the
- * volume we set on elements that stay on the HTML5 path.
+ * never shows us still gets registered, so audio the page plays through
+ * its own Web Audio graphs passes our gain, and so the page cannot undo
+ * the volume we set on elements that stay on the HTML5 path.
  *
  * Sites like SoundCloud create their <audio> with document.createElement()
  * and never attach it, so querySelectorAll, MutationObserver and
@@ -51,14 +52,24 @@ function installPlayHook(pageWindow, mediaRegistry) {
 }
 
 /**
+ * The page routes this element through its own Web Audio graph. It must
+ * stay on the page's graph (whose output our output gain controls),
+ * and any HTML5 volume we put on it must come off.
+ */
+function handOverToPage(element, audioManager, volumeController) {
+  audioManager.markPageManaged(element);
+  volumeController.handOverToPage(element);
+}
+
+/**
  * Wrap AudioContext.prototype.createMediaElementSource(): an element can
  * only ever feed ONE MediaElementAudioSourceNode. If the page routes an
  * element through its own Web Audio graph (SoundCloud does, lazily, for
  * fades) and we had taken the element first, the page's call would throw
- * and its player would break. Marking page-managed elements keeps them on
- * the plain HTML5 volume path.
+ * and its player would break. Marking page-managed elements keeps them out
+ * of our own graph.
  */
-function installWebAudioHook(pageWindow, audioManager) {
+function installWebAudioHook(pageWindow, audioManager, volumeController) {
   const proto = pageWindow.AudioContext?.prototype;
   if (!proto || typeof proto.createMediaElementSource !== 'function') return;
 
@@ -66,7 +77,7 @@ function installWebAudioHook(pageWindow, audioManager) {
 
   const hookedCreate = function (...args) {
     try {
-      if (args[0]) audioManager.markPageManaged(toXray(args[0]));
+      if (args[0]) handOverToPage(toXray(args[0]), audioManager, volumeController);
     } catch {
       // Bookkeeping only - never interfere with the page's audio graph.
     }
@@ -74,6 +85,64 @@ function installWebAudioHook(pageWindow, audioManager) {
   };
 
   proto.createMediaElementSource = exportFunction(hookedCreate, pageWindow);
+}
+
+/**
+ * Wrap AudioNode.prototype.connect() and disconnect() so that whatever the
+ * page sends to the speakers of an AudioContext passes through our output
+ * gain instead (AudioManager.outputFor). Sites like Foundry VTT
+ * play decoded AudioBuffers straight into Web Audio: there is no media
+ * element for us to find, and this is the only place to reach their sound.
+ *
+ * Connecting a MediaElementAudioSourceNode also marks its element as
+ * page-managed, which catches pages that build the node with its
+ * constructor rather than createMediaElementSource().
+ */
+function installAudioOutputHook(pageWindow, audioManager, volumeController) {
+  const proto = pageWindow.AudioNode?.prototype;
+  if (!proto || typeof proto.connect !== 'function' || typeof proto.disconnect !== 'function') return;
+
+  const originalConnect = proto.connect;
+  const originalDisconnect = proto.disconnect;
+
+  // Our gain node when `target` is the destination of a realtime context;
+  // null otherwise (OfflineAudioContext renders to a buffer, not speakers).
+  const outputFor = (node, target) => {
+    try {
+      if (!target) return null;
+      const context = toXray(node).context;
+      if (!(context instanceof AudioContext)) return null;
+      if (toXray(target) !== context.destination) return null;
+      return audioManager.outputFor(context);
+    } catch {
+      return null;
+    }
+  };
+
+  const hookedConnect = function (...args) {
+    try {
+      const node = toXray(this);
+      if (node instanceof MediaElementAudioSourceNode && node.mediaElement) {
+        handOverToPage(node.mediaElement, audioManager, volumeController);
+      }
+    } catch {
+      // Bookkeeping only.
+    }
+    const output = outputFor(this, args[0]);
+    if (!output) return Reflect.apply(originalConnect, this, args);
+    Reflect.apply(originalConnect, this, [output, ...args.slice(1)]);
+    // connect() returns its target for chaining; keep that the page's node.
+    return args[0];
+  };
+
+  const hookedDisconnect = function (...args) {
+    const output = outputFor(this, args[0]);
+    if (!output) return Reflect.apply(originalDisconnect, this, args);
+    return Reflect.apply(originalDisconnect, this, [output, ...args.slice(1)]);
+  };
+
+  proto.connect = exportFunction(hookedConnect, pageWindow);
+  proto.disconnect = exportFunction(hookedDisconnect, pageWindow);
 }
 
 /**
@@ -119,7 +188,8 @@ function installPageHooks(mediaRegistry, audioManager, volumeController) {
     if (!pageWindow || typeof exportFunction !== 'function') return;
 
     installPlayHook(pageWindow, mediaRegistry);
-    installWebAudioHook(pageWindow, audioManager);
+    installWebAudioHook(pageWindow, audioManager, volumeController);
+    installAudioOutputHook(pageWindow, audioManager, volumeController);
     installVolumeHook(pageWindow, volumeController);
   } catch (error) {
     console.warn('Tab Volume Control: could not install page hooks', error);

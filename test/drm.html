@@ -1,0 +1,54 @@
+<!doctype html>
+<meta charset="utf-8">
+<title>DRM ordering test</title>
+<style>body{font:16px system-ui;margin:2em} pre{background:#eee;padding:1em}</style>
+<h1>DRM ordering test (issue #6)</h1>
+<p>Uses built-in ClearKey DRM, so no Widevine or subscription is needed.</p>
+<p>Expected: <b>A</b> says OK even with a remembered volume other than 100% for this site
+(set it, reload, then click). <b>B</b> checks Firefox itself, not the extension: the control
+line says OK and the captured line FAILED (NotSupportedError). That is why the extension
+must never capture media before the page has attached its DRM keys.</p>
+<button id="ext">Test A: with the extension (insert video, wait 2s, setMediaKeys)</button>
+<button id="ctl">Test B: no extension needed (createMediaElementSource, then setMediaKeys)</button>
+<pre id="log"></pre>
+<script>
+const log = (m) => { document.getElementById('log').textContent += m + '\n'; console.log(m); };
+
+async function mediaKeys() {
+  const access = await navigator.requestMediaKeySystemAccess('org.w3.clearkey', [{
+    initDataTypes: ['cenc'],
+    videoCapabilities: [{ contentType: 'video/mp4; codecs="avc1.42E01E"' }],
+  }]);
+  return access.createMediaKeys();
+}
+
+async function trySet(video, label) {
+  try {
+    await video.setMediaKeys(await mediaKeys());
+    log(`${label}: setMediaKeys OK`);
+  } catch (e) {
+    log(`${label}: setMediaKeys FAILED -> ${e.name}: ${e.message}`);
+  }
+}
+
+// Mirrors a streaming player: the <video> goes into the DOM first, and the
+// DRM keys are attached a moment later. The extension's MutationObserver
+// sees the element in between and, at a non-100% volume, routes it through
+// createMediaElementSource.
+document.getElementById('ext').onclick = async () => {
+  const v = document.createElement('video');
+  document.body.append(v);
+  log('A: video inserted, waiting 2s...');
+  await new Promise(r => setTimeout(r, 2000));
+  await trySet(v, 'A');
+};
+
+// The same mechanism without the extension, to confirm the browser rule.
+document.getElementById('ctl').onclick = async () => {
+  const plain = document.createElement('video');
+  await trySet(plain, 'B control (no Web Audio)');
+  const captured = document.createElement('video');
+  new AudioContext().createMediaElementSource(captured);
+  await trySet(captured, 'B captured by Web Audio');
+};
+</script>

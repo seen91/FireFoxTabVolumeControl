@@ -1,0 +1,62 @@
+<!doctype html>
+<meta charset="utf-8">
+<title>Web Audio volume test</title>
+<style>body{font:16px system-ui;margin:2em} button{display:block;margin:.5em 0;padding:.5em 1em}</style>
+<h1>Web Audio volume test</h1>
+<p>Start one at a time, then move the extension slider (try 0% and 300%). Each plays a looping tone.</p>
+<p>Expected: all three follow the slider from 0% to 500%, with no "boosting may not work"
+warning. 1 and 2 are how Foundry VTT plays sound; 2 also covers sites like SoundCloud.
+3 may pause briefly the first time it goes off 100% while the extension captures it.</p>
+<button id="buffer">1. AudioBufferSourceNode → GainNode → destination (Foundry, short tracks)</button>
+<button id="element">2. Detached &lt;audio&gt; → createMediaElementSource → GainNode → destination (Foundry, long tracks)</button>
+<button id="plain">3. Plain &lt;audio&gt; in the page (baseline, should already work)</button>
+<button id="stop">Stop all</button>
+<script>
+const ctx = new AudioContext();
+const playing = [];
+
+// One second of a 440 Hz sine as a WAV blob, so no network or CORS is involved.
+function toneWav() {
+  const rate = 44100, n = rate, data = new DataView(new ArrayBuffer(44 + n * 2));
+  const str = (o, s) => [...s].forEach((c, i) => data.setUint8(o + i, c.charCodeAt(0)));
+  str(0, 'RIFF'); data.setUint32(4, 36 + n * 2, true); str(8, 'WAVEfmt ');
+  data.setUint32(16, 16, true); data.setUint16(20, 1, true); data.setUint16(22, 1, true);
+  data.setUint32(24, rate, true); data.setUint32(28, rate * 2, true);
+  data.setUint16(32, 2, true); data.setUint16(34, 16, true); str(36, 'data');
+  data.setUint32(40, n * 2, true);
+  for (let i = 0; i < n; i++) data.setInt16(44 + i * 2, Math.sin(2 * Math.PI * 440 * i / rate) * 8000, true);
+  return URL.createObjectURL(new Blob([data], { type: 'audio/wav' }));
+}
+const wavUrl = toneWav();
+
+document.getElementById('buffer').onclick = async () => {
+  await ctx.resume();
+  const buffer = await ctx.decodeAudioData(await (await fetch(wavUrl)).arrayBuffer());
+  const source = new AudioBufferSourceNode(ctx, { buffer, loop: true });
+  const gain = ctx.createGain();
+  source.connect(gain).connect(ctx.destination);
+  source.start();
+  playing.push(() => source.stop());
+};
+
+document.getElementById('element').onclick = async () => {
+  await ctx.resume();
+  const audio = new Audio(wavUrl);
+  audio.loop = true;
+  const gain = ctx.createGain();
+  ctx.createMediaElementSource(audio).connect(gain).connect(ctx.destination);
+  audio.play();
+  playing.push(() => audio.pause());
+};
+
+document.getElementById('plain').onclick = () => {
+  const audio = document.createElement('audio');
+  audio.src = wavUrl;
+  audio.loop = true;
+  document.body.append(audio);
+  audio.play();
+  playing.push(() => { audio.pause(); audio.remove(); });
+};
+
+document.getElementById('stop').onclick = () => playing.splice(0).forEach(stop => stop());
+</script>
